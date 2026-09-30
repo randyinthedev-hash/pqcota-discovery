@@ -1,0 +1,2 @@
+Agent-Class: IntrospectAgent
+Can-Redefine-Classes: false

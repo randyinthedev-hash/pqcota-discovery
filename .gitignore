@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+
+# 빌드 산출물 (gen/ 의 .pb.go는 **커밋한다**)
+build/
+dist/
+
+# 통합 테스트용 빌드 바이너리 (Docker COPY 대상)
+discovery/collectors/openssl/integration/openssl-collector
+*.class
+*.jar
+
+# HotSpot attach 트리거 파일 — 대상 JVM이 자기 CWD에 만든다(테스트는 임시 폴더에서 띄운다)
+.attach_pid*

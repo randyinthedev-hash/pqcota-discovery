@@ -1,0 +1,161 @@
+# pqcota 디스커버리 — collector를 **반입 → 실행 → 회수 → 정리**한다.
+#
+# 컨트롤러(ctl)가 빌드한 collector 바이너리를 각 타깃에 SSH로 밀어 넣고, 그 자리에서 돌린 뒤
+# 결과를 회수하고 **노드에 아무것도 남기지 않는다.** collector는 상주 에이전트가 아니라 실행 후
+# 종료하는 CLI라 이 일회성 패턴이 맞다(collector 배포 설계 §5).
+#
+# ★ JVM 애드온(collector.jar)은 **모든 노드에 뿌리지 않는다** — `pqcota-jvmscan -recon`으로 그
+#   노드에 JVM이 있는지 먼저 관측하고, **있는 노드에만** 보낸다(배포 설계 §2: 추측 대신 정찰).
+#
+# ★ 노드 OS는 `gather_facts`가 이미 알려 준다(`ansible_facts.os_family`) — 알아내려고 무언가를
+#   먼저 올릴 필요가 없다. 리눅스면 collector 셋, Windows면 cngscan·jvmscan이다. 어느 쪽도 아니면
+#   아무것도 하지 않는다: 관측하지 못한 노드는 결과가 없을 뿐, "없는 노드"가 아니다.
+#   Windows 태스크는 `ansible.windows` 컬렉션이 필요하다 —
+#   `ansible-galaxy collection install ansible.windows`.
+#
+# 실환경에서 쓰려면 collector_bin_dir를 자기 빌드 산출 경로로 바꾸면 된다
+# (루트 README 「빌드」 — arch별 dist/linux-amd64 등).
+- name: pqcota discovery over SSH (deploy → run → fetch → clean)
+  hosts: targets
+  gather_facts: true # ansible_env.PATH, 그리고 os_family로 노드를 가른다
+  vars:
+    results_dir: /work/results # 컨트롤러에 결과가 모이는 곳
+    # 컨트롤러에서 collector가 있는 곳 — ctl이 빌드해 둔 arch별 산출 경로. 실환경도 같은 모양이다.
+    collector_bin_dir: "/work/dist/linux-{{ lookup('pipe', 'uname -m') | regex_replace('^x86_64$', 'amd64') | regex_replace('^aarch64$', 'arm64') }}"
+    collector_agent: /work/dist/collector.jar # ctl이 빌드한 attach 사이드카 JAR
+    stage_dir: /tmp/pqcota-collector # 노드에 잠깐 두는 곳(끝나면 삭제)
+    collector_bin_dir_win: /work/dist/windows-amd64 # Windows collector(릴리스의 pqcota-windows-amd64.zip, 또는 직접 빌드)
+    stage_dir_win: 'C:\Windows\Temp\pqcota-collector'
+  tasks:
+    # ── 리눅스 노드 — openssl · jvm · network ──
+    - name: "리눅스 노드"
+      when: ansible_facts['os_family'] | default('') != 'Windows' # 못 알아냈으면 리눅스로 — 지금까지의 동작이다
+      become: true # netcap의 CAP_NET_RAW, /proc 전 프로세스 커버리지
+      block:
+        # ── ① 반입 — 관측 대상에 collector만 올린다(중앙 CLI는 보내지 않는다) ──
+        - name: "① 스테이징 디렉터리"
+          file: { path: "{{ stage_dir }}", state: directory, mode: "0755" }
+
+        - name: "① collector 반입 (ctl → 노드)"
+          copy:
+            src: "{{ collector_bin_dir }}/{{ item }}"
+            dest: "{{ stage_dir }}/{{ item }}"
+            mode: "0755"
+          loop: [pqcota-nodescan, pqcota-netcap, pqcota-jvmscan]
+
+        # ── ② 정찰이 애드온 배포를 정한다 ──
+        - name: "② JVM 정찰 (관측 아님 — 배포 판정용)"
+          command: "{{ stage_dir }}/pqcota-jvmscan -recon"
+          register: recon
+          changed_when: false
+
+        - name: "② JVM이 있는 노드에만 에이전트 JAR 반입"
+          copy: { src: "{{ collector_agent }}", dest: "{{ stage_dir }}/collector.jar", mode: "0644" }
+          when: (recon.stdout | from_json | length) > 0
+
+        # ── ③ 실행 + 회수 (결과는 stdout → 컨트롤러에 저장. 노드에 결과 파일도 남기지 않는다) ──
+        - name: "③ OpenSSL 자산 스캔 (/proc, runtime-introspection)"
+          command: "{{ stage_dir }}/pqcota-nodescan {{ inventory_hostname }}"
+          register: scan_ssl
+          changed_when: false
+
+        - name: "   → 컨트롤러에 저장"
+          copy: { content: "{{ scan_ssl.stdout }}", dest: "{{ results_dir }}/{{ inventory_hostname }}-openssl.json" }
+          delegate_to: localhost
+          become: false
+
+        - name: "③ JCA provider 체인 — 정찰→attach (실행 중 JVM의 동적 등록 실체)"
+          # 에이전트가 반입된 노드에서만. attach는 3계층(Go 네이티브 → JDK 클라이언트 → 정적 폴백)이라
+          # JDK가 없어도 붙고, 다 막히면 정직히 강등·갭으로 보고한다.
+          command: "{{ stage_dir }}/pqcota-jvmscan {{ inventory_hostname }}"
+          environment:
+            PQCOTA_JVM_AGENT: "{{ stage_dir }}/collector.jar"
+          register: scan_jca
+          changed_when: false
+          when: (recon.stdout | from_json | length) > 0
+
+        - name: "   → 컨트롤러에 저장"
+          # **확장자가 `.jsonl`인 이유**: jvmscan의 attach 경로는 관측한 JVM마다 한 줄씩 낸다.
+          # JVM이 하나뿐인 노드에서는 그 한 줄이 단일 객체로도 읽혀 `.json`이라도 우연히 통했고,
+          # 둘 이상이면 그 노드의 결과가 통째로 사라졌다. 이름이 내용을 속이지 않게 한다.
+          copy: { content: "{{ scan_jca.stdout }}", dest: "{{ results_dir }}/{{ inventory_hostname }}-jca.jsonl" }
+          delegate_to: localhost
+          become: false
+          when: scan_jca is not skipped and scan_jca.stdout | default('') | length > 0
+
+        - name: "③ 네트워크 관측 + 핸드셰이크 (AF_PACKET, co-located {{ window }}s)"
+          # pqcota-observe.sh는 **데모 전용 헬퍼**(관측 구간에 트래픽을 만들어 준다) — 노드 이미지에 있다.
+          # PATH에 스테이징을 앞세워 방금 반입한 pqcota-netcap을 쓰게 한다.
+          # 실환경엔 진짜 트래픽이 흐르므로 `{{ stage_dir }}/pqcota-netcap <node> <iface> <구간초>`만 돌리면 된다.
+          command: /usr/local/bin/pqcota-observe.sh "{{ inventory_hostname }}" {{ window }} {{ traffic }}
+          environment:
+            PATH: "{{ stage_dir }}:{{ ansible_env.PATH }}"
+          register: netobs
+          changed_when: false
+
+        - name: "   → 컨트롤러에 저장"
+          copy: { content: "{{ netobs.stdout }}", dest: "{{ results_dir }}/{{ inventory_hostname }}-net.json" }
+          delegate_to: localhost
+          become: false
+
+        # ── ④ 정리 — 상주하지 않는다(§5). 관측이 끝나면 노드는 원래 상태로. ──
+        - name: "④ 노드 정리 — collector·에이전트 흔적 제거"
+          file: { path: "{{ stage_dir }}", state: absent }
+
+    # ── Windows 노드 — CNG. 반입·실행·회수·정리는 같고 모듈만 다르다. ──
+    - name: "Windows 노드"
+      when: ansible_facts['os_family'] | default('') == 'Windows'
+      block:
+        - name: "① 스테이징 디렉터리"
+          ansible.windows.win_file: { path: "{{ stage_dir_win }}", state: directory }
+
+        - name: "① collector 반입 (ctl → 노드)"
+          ansible.windows.win_copy:
+            src: "{{ collector_bin_dir_win }}/{{ item }}"
+            dest: "{{ stage_dir_win }}\\{{ item }}"
+          loop: [pqcota-cngscan.exe, pqcota-jvmscan.exe]
+
+        # ── ② 정찰이 애드온 배포를 정한다 — 리눅스와 같은 규칙이다 ──
+        - name: "② JVM 정찰 (관측 아님 — 배포 판정용)"
+          ansible.windows.win_command: '{{ stage_dir_win }}\pqcota-jvmscan.exe -recon'
+          register: recon_win
+          changed_when: false
+
+        - name: "② JVM이 있는 노드에만 에이전트 JAR 반입"
+          ansible.windows.win_copy: { src: "{{ collector_agent }}", dest: "{{ stage_dir_win }}\\collector.jar" }
+          when: (recon_win.stdout | from_json | length) > 0
+
+        # ── ③ 실행 + 회수 ──
+        # CNG는 정찰이 없다 — 등록된 provider를 묻는 것 자체가 가벼워서 먼저 물어볼 것이 없다
+        # (JVM은 attach가 무거워 정찰이 필요하다).
+        - name: "③ CNG provider·알고리즘 관측 (bcrypt.dll 열거)"
+          ansible.windows.win_command: '{{ stage_dir_win }}\pqcota-cngscan.exe {{ inventory_hostname }}'
+          register: scan_cng
+          changed_when: false
+
+        - name: "   → 컨트롤러에 저장"
+          copy: { content: "{{ scan_cng.stdout }}", dest: "{{ results_dir }}/{{ inventory_hostname }}-cng.json" }
+          delegate_to: localhost
+          become: false
+
+        - name: "③ JCA provider 체인 — 정찰→attach"
+          # ①(Go 네이티브)은 리눅스 전용이라 여기선 ② JDK 클라이언트 → ③ 정적 폴백 순으로 간다.
+          # 머신에 JDK가 없으면 java.security만 읽고 동적 등록은 사각으로 남는다(강등·갭 고지).
+          ansible.windows.win_command: '{{ stage_dir_win }}\pqcota-jvmscan.exe {{ inventory_hostname }}'
+          environment:
+            PQCOTA_JVM_AGENT: '{{ stage_dir_win }}\collector.jar'
+          register: scan_jca_win
+          changed_when: false
+          when: (recon_win.stdout | from_json | length) > 0
+
+        - name: "   → 컨트롤러에 저장"
+          # **확장자가 `.jsonl`인 이유**: jvmscan의 attach 경로는 관측한 JVM마다 한 줄씩 낸다.
+          # JVM이 하나뿐인 노드에서는 그 한 줄이 단일 객체로도 읽혀 `.json`이라도 우연히 통했고,
+          # 둘 이상이면 그 노드의 결과가 통째로 사라졌다. 이름이 내용을 속이지 않게 한다.
+          copy: { content: "{{ scan_jca_win.stdout }}", dest: "{{ results_dir }}/{{ inventory_hostname }}-jca.jsonl" }
+          delegate_to: localhost
+          become: false
+          when: scan_jca_win is not skipped and scan_jca_win.stdout | default('') | length > 0
+
+        - name: "④ 노드 정리 — collector·에이전트 흔적 제거"
+          ansible.windows.win_file: { path: "{{ stage_dir_win }}", state: absent }

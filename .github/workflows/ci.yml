@@ -1,0 +1,154 @@
+name: ci
+
+# 이 리포의 검사를 사람이 기억하지 않아도 걸리게 한다. 리포 사이에 걸친 검사(import 방향·게이트 배선·문서 링크의
+# 교차 확인)는 통합 리포 pqcota의 ci.yml이 다섯 리포를 함께 받아 잰다.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # 형제 리포를 이 리포와 **나란히** 받는다 — go.mod가 replace로 ../ 를 읽는 배치다.
+      - uses: actions/checkout@v7
+        with:
+          path: pqcota-discovery
+          fetch-depth: 0
+      - uses: actions/checkout@v7
+        with:
+          repository: randyinthedev-hash/pqcota-common
+          path: pqcota-common
+          fetch-depth: 0
+      - uses: actions/checkout@v7
+        with:
+          repository: randyinthedev-hash/pqcota-inventory
+          path: pqcota-inventory
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: pqcota-discovery/go.mod
+          cache: true
+          cache-dependency-path: pqcota-discovery/go.sum
+
+      # 사이드카는 --release 8로 빌드한다(레거시 JVM에 붙어야 해서).
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: fmt / vet
+        working-directory: pqcota-discovery
+        run: |
+          make fmt-check
+          make vet
+
+      - name: build
+        working-directory: pqcota-discovery
+        run: make build
+
+      - name: build-jar
+        working-directory: pqcota-discovery
+        run: make build-jar
+
+      # integration은 환경이 없으면 스스로 스킵한다 — 스킵은 통과가 아니므로
+      # 무엇이 건너뛰었는지 로그에 남긴다. `-v` 없이 돌리면 스킵이 아예 찍히지 않는다.
+      # 출력은 `-v`로 받아 두고 요약만 낸다.
+      - name: test
+        working-directory: pqcota-discovery
+        run: |
+          set +e
+          go test ./... -count=1 -v > /tmp/test.log 2>&1
+          status=$?
+          if [ $status -ne 0 ]; then
+            # 실패하면 요약만 봐서는 원인을 못 짚는다. 통째로 낸다.
+            cat /tmp/test.log
+          else
+            grep -E '^ok  ' /tmp/test.log
+          fi
+          echo "── 건너뛴 케이스 (스킵은 통과가 아니다)"
+          if grep -qE '^ *--- SKIP' /tmp/test.log; then
+            grep -E '^ *--- SKIP' /tmp/test.log | sed 's/^ *//'
+          else
+            echo "  없다"
+          fi
+          exit $status
+
+      # TD-NETWORK-15는 `CAP_NET_RAW`가 **있어야** 돈다. 러너는 권한이 없어 위 실행에서
+      # 스킵되는데, 정반대로 TD-NETWORK-16은 권한이 없어야 도니 한 번에 둘을 재지 못한다.
+      # 그래서 15만 여기서 다시 돌린다. `sudo go test`가 아니라 **바이너리를 먼저 만들고**
+      # 그것을 sudo로 돌린다 — root가 빌드 캐시에 쓰면 뒤 스텝이 권한으로 깨진다.
+      # 스킵은 통과가 아니므로 PASS가 찍혔는지까지 본다.
+      - name: test (CAP_NET_RAW가 있어야 도는 케이스)
+        working-directory: pqcota-discovery
+        run: |
+          set -o pipefail
+          go test -c -o /tmp/netcap.test ./discovery/collectors/network/
+          sudo /tmp/netcap.test -test.run TestObserveFillsTheWholeWindow -test.v | tee /tmp/n15.log
+          grep -q '^--- PASS: TestObserveFillsTheWholeWindow' /tmp/n15.log || {
+            echo "✗ TD-NETWORK-15가 돌지 않았다 — sudo에도 CAP_NET_RAW가 없다면 이 스텝이 무의미하다"
+            exit 1
+          }
+
+  # 노드에 올리는 것은 정적 바이너리다. arch를 바꿔도 서는지 확인한다.
+  cross-build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goarch: [amd64, arm64]
+    steps:
+      # 형제 리포를 이 리포와 **나란히** 받는다 — go.mod가 replace로 ../ 를 읽는 배치다.
+      - uses: actions/checkout@v7
+        with:
+          path: pqcota-discovery
+          fetch-depth: 0
+      - uses: actions/checkout@v7
+        with:
+          repository: randyinthedev-hash/pqcota-common
+          path: pqcota-common
+          fetch-depth: 0
+      - uses: actions/checkout@v7
+        with:
+          repository: randyinthedev-hash/pqcota-inventory
+          path: pqcota-inventory
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: pqcota-discovery/go.mod
+          cache: true
+          cache-dependency-path: pqcota-discovery/go.sum
+
+      - name: collector 정적 빌드 (${{ matrix.goarch }})
+        working-directory: pqcota-discovery
+        env:
+          CGO_ENABLED: '0'
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          go build -o dist/linux-${GOARCH}/ \
+            ./discovery/cmd/pqcota-nodescan \
+            ./discovery/cmd/pqcota-netcap \
+            ./discovery/cmd/pqcota-jvmscan
+          file dist/linux-${GOARCH}/* | tee /dev/stderr | grep -q "statically linked" \
+            || { echo "✗ 정적 링크가 아니다 — 배포판·libc를 가리게 된다"; exit 1; }
+
+      # CNG collector가 자랄 타깃. 산출물을 내지 않고 컴파일만 본다 — 리눅스 전용 코드가
+      # 빌드 태그 밖으로 새면 Windows에서만 깨지고, 그것은 여기서만 잡힌다.
+      - name: windows 교차 컴파일 (${{ matrix.goarch }})
+        working-directory: pqcota-discovery
+        env:
+          CGO_ENABLED: '0'
+          GOOS: windows
+          GOARCH: ${{ matrix.goarch }}
+        run: go build -o /dev/null ./...
