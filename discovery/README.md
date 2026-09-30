@@ -68,4 +68,4 @@ Arguments, privileges, and environment variables per command → [discovery/cmd]
 
 ## See also
 
-process-attribution library [`pkg/discovery/procs`](../pkg/discovery/procs) · normalization and history libraries [`pkg/inventory/`](https://github.com/randyinthedev-hash/pqcota-inventory/tree/main/pkg/inventory) · runnable examples [`examples/discovery/`](https://github.com/randyinthedev-hash/pqcota/tree/main/examples/discovery)
+process-attribution library [`pkg/discovery/procs`](../pkg/discovery/procs) · normalization and history libraries [`pkg/inventory/`](https://github.com/randyinthedev-hash/pqcota-inventory/tree/main/pkg/inventory) · runnable examples [`examples/discovery/`](../examples/discovery)

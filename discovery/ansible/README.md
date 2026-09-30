@@ -23,7 +23,7 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o dist/windows-amd64/ \
 
 A Windows node has to be **reached with an administrator account** for JVMs running as other users to be visible (measured: 163 of 265 could not be opened as an ordinary user). This is the counterpart of `become: true` in the Linux block.
 
-How to connect is decided by the `connection` column of `hosts.csv` (`ssh` or `winrm`). `targets.ini` is overwritten on every run, so settings added by hand do not survive → [how to write it](https://github.com/randyinthedev-hash/pqcota/blob/main/examples/discovery/README.md). Only the values that differ per site (WinRM transport and certificate validation, an sshd whose default shell is cmd) go in `group_vars/targets_windows.yml`.
+How to connect is decided by the `connection` column of `hosts.csv` (`ssh` or `winrm`). `targets.ini` is overwritten on every run, so settings added by hand do not survive → [how to write it](../../examples/discovery/README.md). Only the values that differ per site (WinRM transport and certificate validation, an sshd whose default shell is cmd) go in `group_vars/targets_windows.yml`.
 
 > **It has been run once on the real thing** (TD-WIN-1·2): connected with Win32-OpenSSH and a key, ship, observe, retrieve and clean-up all ran to the end, and nothing was left on the node. Note, though, that **the demo does not verify this path**. The demo has only Linux containers, so the Windows branch has no gate that is checked on every run.
 

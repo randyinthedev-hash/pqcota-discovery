@@ -14,7 +14,7 @@ pqcota-hosts [--ansible-out <path>] [--dsn <postgres>] <hosts.csv>
 
 | Argument/option | What it does |
 |---|---|
-| `<hosts.csv>` | the connection file (written by the user). A header is required, column order is free, and only `node_id` is mandatory — the **column table and a sample you can run as-is** are in [examples/discovery](https://github.com/randyinthedev-hash/pqcota/blob/main/examples/discovery/README.md) ([hosts.csv](https://github.com/randyinthedev-hash/pqcota/blob/main/examples/discovery/hosts.csv)) |
+| `<hosts.csv>` | the connection file (written by the user). A header is required, column order is free, and only `node_id` is mandatory — the **column table and a sample you can run as-is** are in [examples/discovery](../../examples/discovery/README.md) ([hosts.csv](../../examples/discovery/hosts.csv)) |
 | `--ansible-out <path>` | generates an Ansible inventory (ini) — it holds accounts and keys, so it is written **owner-readable only** (`0600`). You run ② on each node with it |
 | `--dsn <postgres>` | upserts the endpoints into the pqcota inventory — accounts and keys excluded; editable and reusable later |
 
@@ -170,6 +170,8 @@ What you need when running on a node. Insufficient privilege means **the visible
 | `pqcota-jvmscan` | **the same UID** as the target JVM (or root). If the target blocks attach it degrades to reading the target's `java.security` | `PQCOTA_JVM_AGENT`=path to collector.jar — given, it takes the attach path. **Without it, and with no JVM running**, it starts one to see the launcher's default provider chain, recorded as **degraded** (not an observation of a running app) |
 | `pqcota-cngscan` | no special privilege — the `bcrypt.dll` enumeration APIs are read-only queries | `PQCOTA_SIGN_KEY` — if set, results are signed (optional) |
 
+The key pair for `PQCOTA_SIGN_KEY` (and the matching `PQCOTA_VERIFY_KEY` at the centre) comes from [`pqcota-keygen`](https://github.com/randyinthedev-hash/pqcota-common/blob/main/cmd/README.md#pqcota-keygen), which lives in `pqcota-common` because plan approval uses the same kind of key.
+
 
 ### Runtime requirements — kernel and privileges
 
@@ -197,24 +199,7 @@ Neither kernel has an **`NSpid` line** in `/proc/<pid>/status`, and the host-PID
 
 ## ③ Other — commands that are not collectors
 
-**They are not observation.** They emit no `CollectionResult`, so nothing is ingested centrally. They also run in different places — `pqcota-procs` on the target machine, `pqcota-keygen` once, when the keys are set up.
-
-### `pqcota-keygen`
-
-```
-pqcota-keygen
-```
-
-No arguments. It generates an **ed25519 key pair** for signing collector reports and prints it to stdout. The two lines it prints go to different places:
-
-| What it prints | Where it goes | Who uses it |
-|---|---|---|
-| `PQCOTA_SIGN_KEY` (private) | on the node, when a collector runs | signs the result — [Privileges · environment variables](#privileges--environment-variables) |
-| `PQCOTA_VERIFY_KEY` (public) | at the centre, when `pqcota-ingest` runs | verifies the signature. Several keys are comma-separated |
-
-**The private key goes to stdout.** Redirect it into a file and the file stays behind; paste it into a shell and it stays in the history.
-
-**Signing is optional.** Without a key nothing is blocked; instead the centre reports *"unverified signatures: N"*. That does not mean they are wrong; it means **they were never checked**. To refuse to ingest at all when there is no key to verify with, set `PQCOTA_REQUIRE_SIGNATURE=1`.
+**They are not observation.** They emit no `CollectionResult`, so nothing is ingested centrally. `pqcota-procs` runs on the target machine.
 
 ### `pqcota-procs`
 

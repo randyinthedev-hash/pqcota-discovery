@@ -1,0 +1,5 @@
+node_id,name,ip,port,ssh_user,ssh_key,ssh_pass,os,connection
+node-a,Web Frontend,10.0.0.2,22,deploy,/home/me/.ssh/id_ed25519,,,
+node-b,Payments App (Java),10.0.0.3,22,deploy,,example-password,,
+node-c,Payments DB,10.0.0.9,22,deploy,/home/me/.ssh/id_ed25519,,,
+node-d,Payments Gateway (Windows),10.0.0.11,,Administrator,,example-password,windows,winrm
