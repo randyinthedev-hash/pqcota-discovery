@@ -26,7 +26,7 @@ If `PQCOTA_JVM_AGENT` (the collector JAR) is present it attaches, and if not it 
 
 ## Several JVMs
 
-When a node has several JVMs, each becomes a **distinct finding**. The identifier is the **app** (main class or `-jar`), not the PID, so two apps on the same JDK are not merged into one and the history does not break on a rescan. Design and boundary: see the collector source under `discovery/collectors/jvm/`.
+When a node has several JVMs, each becomes a **distinct finding**. The identifier is the **app** (main class or `-jar`), not the PID, so two apps on the same JDK are not merged into one and the history does not break on a rescan. Design and boundary: see the collector source under `collectors/jvm/`.
 
 ## The whole flow
 

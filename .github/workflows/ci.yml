@@ -93,7 +93,7 @@ jobs:
         working-directory: pqcota-discovery
         run: |
           set -o pipefail
-          go test -c -o /tmp/netcap.test ./discovery/collectors/network/
+          go test -c -o /tmp/netcap.test ./collectors/network/
           sudo /tmp/netcap.test -test.run TestObserveFillsTheWholeWindow -test.v | tee /tmp/n15.log
           grep -q '^--- PASS: TestObserveFillsTheWholeWindow' /tmp/n15.log || {
             echo "✗ TD-NETWORK-15가 돌지 않았다 — sudo에도 CAP_NET_RAW가 없다면 이 스텝이 무의미하다"
@@ -137,9 +137,9 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           go build -o dist/linux-${GOARCH}/ \
-            ./discovery/cmd/pqcota-nodescan \
-            ./discovery/cmd/pqcota-netcap \
-            ./discovery/cmd/pqcota-jvmscan
+            ./cmd/pqcota-nodescan \
+            ./cmd/pqcota-netcap \
+            ./cmd/pqcota-jvmscan
           file dist/linux-${GOARCH}/* | tee /dev/stderr | grep -q "statically linked" \
             || { echo "✗ 정적 링크가 아니다 — 배포판·libc를 가리게 된다"; exit 1; }
 

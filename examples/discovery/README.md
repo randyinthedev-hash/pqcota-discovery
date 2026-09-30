@@ -92,6 +92,6 @@ The JCA provider chain shows what is really there (including a runtime `addProvi
 ## To scan a real node (Linux)
 To produce real observations instead of the samples, run this on the observed host:
 ```bash
-go run ./discovery/cmd/pqcota-nodescan <node-id>   # the loaded OpenSSL (libssl/libcrypto) from /proc: Linux only
+go run ./cmd/pqcota-nodescan <node-id>   # the loaded OpenSSL (libssl/libcrypto) from /proc: Linux only
 ```
-Collect the result JSON files and give that directory to `pqcota-ingest`. For the JVM see [jvm/](jvm/README.md). The map of all commands: [discovery/cmd/README](../../discovery/cmd/README.md).
+Collect the result JSON files and give that directory to `pqcota-ingest`. For the JVM see [jvm/](jvm/README.md). The map of all commands: [cmd/README](../../cmd/README.md).

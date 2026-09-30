@@ -12,8 +12,8 @@ TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 cd "$ROOT"
 
 echo "▶ 1) building the Go binaries — pqcota-jvmscan, pqcota-ingest"
-GOOS=linux go build -o "$TMP/pqcota-jvmscan" ./discovery/cmd/pqcota-jvmscan
-GOOS=linux go build -o "$TMP/pqcota-ingest"  github.com/randyinthedev-hash/pqcota-inventory/inventory/cmd/pqcota-ingest
+GOOS=linux go build -o "$TMP/pqcota-jvmscan" ./cmd/pqcota-jvmscan
+GOOS=linux go build -o "$TMP/pqcota-ingest"  github.com/randyinthedev-hash/pqcota-inventory/cmd/pqcota-ingest
 
 echo "▶ 2) JDK container: build the pure-Java collector.jar, start a JVM with BC registered dynamically, then recon → attach"
 docker run --rm -i \

@@ -29,7 +29,7 @@ build:
 # `com.sun.tools.attach`(JDK 9+ 모듈)를 써서 8로 못 낮추지만, 대상 JVM 안에서 로드되지 않으므로
 # 상관없다. 한 번에 컴파일하면 전부 빌드 JDK의 클래스 버전이 되어 **낡은 JVM에서 로드조차 안 된다**
 # (실측: JDK 21로 만든 jar은 17·11·8에서 LinkageError).
-JVM_COLLECTOR := discovery/collectors/jvm/collector
+JVM_COLLECTOR := collectors/jvm/collector
 build-jar:
 	@if ! command -v javac >/dev/null; then \
 	  echo "⚠ javac 없음 — Java 사이드카 빌드 건너뜀(JDK 11+ 필요). collector.jar가 없으면 attach 경로를 쓸 수 없다."; \
