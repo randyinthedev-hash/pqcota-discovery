@@ -3,7 +3,7 @@ import java.security.Security;
 
 /**
  * 테스트 대상 JVM (S2). BouncyCastle을 **런타임에 동적 등록**한 뒤 대기한다.
- * 동적 등록(addProvider)은 java.security 파일·정적 스캔으로는 보이지 않으므로(§1.2),
+ * 동적 등록(addProvider)은 java.security 파일·정적 스캔으로는 보이지 않으므로(디스커버리 설계 §2.2),
  * attach로만 잡아야 하는 "실체"의 대표 케이스다.
  */
 public class ProviderApp {

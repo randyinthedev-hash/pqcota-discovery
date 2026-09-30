@@ -6,7 +6,7 @@ import java.security.Security;
 /**
  * 인트로스펙션 에이전트 (jvm-collector 핵심). attach로 대상 JVM에 주입되어
  * agentmain 안에서 Security.getProviders() **실체**를 조회하고 결과를 파일로 반환한다.
- * 등록 순서 보존(§1.2 우선순위 협상 판정 근거).
+ * 등록 순서 보존(디스커버리 설계 §2.2 우선순위 협상 판정 근거).
  */
 public class IntrospectAgent {
     public static void agentmain(String args, Instrumentation inst) {

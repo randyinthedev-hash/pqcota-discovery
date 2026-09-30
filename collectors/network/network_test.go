@@ -267,7 +267,7 @@ func TestShouldObserve_selfReference(t *testing.T) {
 	}
 }
 
-// ── TD-NETWORK-9: off-scope dst = 원시 주소(코어 등재판정 입력) ──
+// ── TD-NETWORK-10: off-scope dst = 원시 주소(코어 등재판정 입력) ──
 func TestBuildEdge_offScopeRawAddr(t *testing.T) {
 	e := network.BuildEdge(network.ConnTuple{SrcNode: "web", DstNodeID: "", DstAddr: "203.0.113.5:443", Port: 443},
 		&network.Handshake{Protocol: "TLS", NegotiatedGroup: "x25519"})
@@ -279,7 +279,7 @@ func TestBuildEdge_offScopeRawAddr(t *testing.T) {
 	}
 }
 
-// ── TD-NETWORK-10: Describe 능력 신고 ──
+// ── TD-NETWORK-11: Describe 능력 신고 ──
 func TestDescribe(t *testing.T) {
 	caps, _ := network.NewService(nil, nil).Describe(context.Background(), &discoveryv1.DescribeRequest{})
 	if caps.GetCollectorId() != "network-collector" {

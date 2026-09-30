@@ -44,7 +44,7 @@ func NewService(src Source, self map[string]bool) *Service {
 	return &Service{Source: src, Self: self}
 }
 
-// Describe — 능력 신고(TD-NETWORK-10). 네트워크 계층·수동 관측·비침습.
+// Describe — 능력 신고(TD-NETWORK-11). 네트워크 계층·수동 관측·비침습.
 func (s *Service) Describe(_ context.Context, _ *discoveryv1.DescribeRequest) (*discoveryv1.CollectorCapabilities, error) {
 	return &discoveryv1.CollectorCapabilities{
 		CollectorId: collectorID,
