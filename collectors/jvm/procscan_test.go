@@ -98,7 +98,7 @@ func TestIdent(t *testing.T) {
 
 // JDK vs 순수 JRE 판별 — ② JDK 클라이언트 폴백의 후보 선택·실패 사유 설명에 쓰인다.
 // (1순위 Go 네이티브는 이 값과 무관하게 JDK 없이 붙는다.)
-// 파일 존재 검사를 주입해 실물 JDK 없이 검증한다(collector-deployment.md §2의 전제).
+// 파일 존재 검사를 주입해 실물 JDK 없이 검증한다.
 func TestAttachCapable(t *testing.T) {
 	jdk := map[string]bool{"/opt/jdk21/" + AttachLibRel: true} // JDK엔 있고
 	has := func(p string) bool { return jdk[p] }

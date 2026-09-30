@@ -7,7 +7,7 @@ import (
 	"github.com/randyinthedev-hash/pqcota-discovery/collectors/openssl"
 )
 
-// TD-OPENSSL-1 (testcases.md §2). /proc/<pid>/maps 파싱.
+// TD-OPENSSL-1. /proc/<pid>/maps 파싱.
 func TestParseProcMaps(t *testing.T) {
 	// 실제 maps 스냅샷 형태(주소·권한·오프셋·dev·inode·경로).
 	const maps = `561e0a000000-561e0a021000 r--p 00000000 fd:01 100  /usr/bin/python3.11
