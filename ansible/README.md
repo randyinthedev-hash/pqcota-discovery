@@ -33,6 +33,6 @@ How to connect is decided by the `connection` column of `hosts.csv` (`ssh` or `w
 
 ## To use it on your own infrastructure
 
-Change `collector_bin_dir` (Linux) and `collector_bin_dir_win` (Windows) to your own build output → [pqcota README · Build](https://github.com/randyinthedev-hash/pqcota/blob/main/README.md#build). The reason only the Linux block carries `become: true` is `pqcota-netcap`'s `CAP_NET_RAW` and the `/proc` coverage of every process.
+Change `collector_bin_dir` (Linux) and `collector_bin_dir_win` (Windows) to your own build output → [pqcota build guide](https://github.com/randyinthedev-hash/pqcota/blob/main/docs/build.md#build). The reason only the Linux block carries `become: true` is `pqcota-netcap`'s `CAP_NET_RAW` and the `/proc` coverage of every process.
 
 **There is no generator that builds playbooks at fleet scale.** The model does not build its own remote execution engine: the user's existing substrate (Ansible, Salt and so on) does the running.
