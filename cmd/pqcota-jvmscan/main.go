@@ -177,10 +177,13 @@ func main() {
 	// 적어야 한다. nodescan이 /proc에 로드된 libssl만 보는 것과 같은 규칙이다.
 	c := jvm.ParseProviders(string(probeOut))
 	c.Degraded = true
-	c.Note = "no JVM was running — the machine's java launcher was started for this probe, so this is its default provider chain, not an observation of a running app (the runtime registrations of real apps are a blind spot)"
+	// 왜 이 경로에 왔는지는 **발견한 수에 따라 다르다.** JVM을 찾고도 에이전트를 안 준 것과 하나도
+	// 못 찾은 것, 프로세스 목록을 못 읽은 것을 한 문장으로 적으면 읽는 사람이 관측 범위를 잘못 안다.
+	why := probeReason(len(jvms), st.ProcUnavailable)
+	c.Note = why + " — the machine's java launcher was started for this probe, so this is its default provider chain, not an observation of a running app (the runtime registrations of real apps are a blind spot)"
 	emit(*out, node, []*discoveryv1.CollectionResult{jvm.BuildResult(node, c)}, false,
 		"0 JVMs observed — probed the machine's java launcher instead")
-	fmt.Fprintf(os.Stderr, "[jvmscan] ⚠ no JVM was running, so one was started to probe the machine's java launcher — this is not an observation of a running app\n")
+	fmt.Fprintf(os.Stderr, "[jvmscan] ⚠ %s. The machine's java launcher was started to probe instead — this is not an observation of a running app\n", why)
 	fmt.Fprintf(os.Stderr, "[jvmscan] %s: %d providers (default chain of %s)\n", node, len(c.Providers), javaBin)
 }
 
@@ -256,6 +259,21 @@ func deniedHint(denied int) {
 	// 그 자리에서 "관리자로 돌리세요"는 안내가 아니라 잡음이다.
 	if !privileged() {
 		fmt.Fprintf(os.Stderr, "[jvmscan]   run as %s to widen the view.\n", elevateAs)
+	}
+}
+
+// probeReason — 프로브 경로로 온 까닭. 프로브는 대상 JVM을 보지 않고 새로 띄운 java의 기본 체인을 읽는다.
+// 까닭은 셋이고 서로 다른 이야기다: 도는 JVM을 찾았는데 에이전트(PQCOTA_JVM_AGENT)를 안 줬다 /
+// 프로세스 목록을 못 읽어 있는지 없는지 모른다 / 목록을 읽었고 JVM이 하나도 없었다.
+// "no JVM was running"은 마지막 경우에만 쓴다 — 아니면 관측하지 않은 것을 없다고 적게 된다.
+func probeReason(found int, procUnavailable bool) string {
+	switch {
+	case found > 0:
+		return fmt.Sprintf("%d running JVM(s) were found but neither a collector JAR (PQCOTA_JVM_AGENT) nor --pid was given, so none was observed", found)
+	case procUnavailable:
+		return "the process list could not be read, so it is not known whether a JVM was running"
+	default:
+		return "no JVM was running"
 	}
 }
 
