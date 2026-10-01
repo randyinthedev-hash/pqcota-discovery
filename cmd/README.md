@@ -16,7 +16,7 @@ pqcota-hosts [--ansible-out <path>] [--dsn <postgres>] <hosts.csv>
 |---|---|
 | `<hosts.csv>` | the connection file (written by the user). A header is required, column order is free, and only `node_id` is mandatory — the **column table and a sample you can run as-is** are in [examples/discovery](../examples/discovery/README.md) ([hosts.csv](../examples/discovery/hosts.csv)) |
 | `--ansible-out <path>` | generates an Ansible inventory (ini) — it holds accounts and keys, so it is written **owner-readable only** (`0600`). You run ② on each node with it |
-| `--dsn <postgres>` | upserts the endpoints into the pqcota inventory — accounts and keys excluded; editable and reusable later |
+| `--dsn <postgres>` | upserts the endpoints into the pqcota inventory — accounts and keys excluded; editable and reusable later. They go to the organization named by `PQCOTA_ORG` (the default organization when it is unset) |
 
 `<postgres>` is a Postgres connection string. The driver is pgx, so both the URL form and the key=value form are accepted:
 

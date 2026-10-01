@@ -13,8 +13,17 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/randyinthedev-hash/pqcota-common/pkg/org"
 	"github.com/randyinthedev-hash/pqcota-inventory/pkg/inventory"
 )
+
+// openMetaStore — 엔드포인트를 쓸 메타 저장소. **PQCOTA_ORG를 읽는다.** 다른 저장소 명령(ingest·
+// inventory 등)이 같은 환경변수로 조직을 정하는데 여기만 조직 없이 열면 기본 조직에 써서, 조직을 둔
+// 배포에서 조회 쪽(`pqcota-inventory`)이 이 엔드포인트를 못 본다. PQCOTA_REQUIRE_ORG=1이면
+// 조직이 없을 때 열리지 않는다.
+func openMetaStore(ctx context.Context, dsn string) (*inventory.PgMetaStore, error) {
+	return inventory.NewPgMetaStoreIn(ctx, dsn, org.FromEnv())
+}
 
 func main() {
 	out := flag.String("ansible-out", "", "path for the runtime Ansible inventory (ini); not written unless given")
@@ -55,7 +64,7 @@ func main() {
 
 	// --dsn 지정 시 인벤토리에 upsert(재사용·사용자 수정 가능). 비밀은 여전히 미영속.
 	if *dsn != "" {
-		meta, err := inventory.NewPgMetaStore(context.Background(), *dsn)
+		meta, err := openMetaStore(context.Background(), *dsn)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "metadata store:", err)
 			os.Exit(1)
@@ -67,6 +76,6 @@ func main() {
 				os.Exit(1)
 			}
 		}
-		fmt.Fprintf(os.Stderr, "[hosts] upserted %d endpoints into the inventory (no secrets)\n", len(eps))
+		fmt.Fprintf(os.Stderr, "[hosts] upserted %d endpoints into the inventory (organization %s; no secrets)\n", len(eps), meta.Org())
 	}
 }
