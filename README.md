@@ -67,7 +67,7 @@ Arguments, privileges, and environment variables per command → [cmd/README](cm
 |---|---|
 | `collectors/` | the collectors: `openssl`, `jvm` (with the Java sidecar), `network`, `cng` |
 | `cmd/` | the commands: `pqcota-nodescan`, `pqcota-jvmscan`, `pqcota-netcap`, `pqcota-cngscan`, `pqcota-hosts`, `pqcota-procs` |
-| `ansible/` | the reference playbook that runs the collectors across prepared nodes |
+| [`ansible/`](ansible/README.md) | the reference playbook that runs the collectors across prepared nodes |
 | `pkg/discovery/procs/` | process attribution shared by the collectors |
 | `examples/` | runnable examples: access prep, ingest of collected results, and the JVM reconnaissance → attach |
 
@@ -84,7 +84,7 @@ go test ./...   # unit tests only
 
 `make build-jar` builds the Java attach sidecar (`build/collector.jar`, needs JDK 11+). `make build` also cross-compiles for linux/amd64 and windows/amd64, since the collectors' core is Linux-only code behind build tags.
 
-Until the modules are tagged, `go.mod` points at the sibling repositories with `replace` directives (`../pqcota-common` and so on), so clone the repositories side by side. Remove the `replace` lines and raise the `require` versions once the tags exist.
+`go.mod` reads the sibling repositories from `../` through `replace` directives (`../pqcota-common` and so on), so clone the repositories side by side. The `replace` lines stay: they are the local link between the repositories, while the `require` lines point at the release tag (currently `v0.10.0`), which is what a consumer outside this workspace receives. See the [build guide](https://github.com/randyinthedev-hash/pqcota/blob/main/docs/build.md#get-the-source).
 
 ## See also
 
