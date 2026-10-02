@@ -1,3 +1,5 @@
+English · [한국어](README.ko.md)
+
 # examples/discovery: access prep + two intake paths (① direct observation · ② delegated CBOM)
 
 ```bash

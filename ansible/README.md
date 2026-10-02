@@ -1,3 +1,5 @@
+English · [한국어](README.ko.md)
+
 # ansible/: the reference playbook
 
 A **reference implementation** that runs the collectors on prepared nodes all at once. The demo uses it as it is, and it is here so you can carry it over to your own infrastructure unchanged.

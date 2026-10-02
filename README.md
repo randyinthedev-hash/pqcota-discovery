@@ -1,3 +1,5 @@
+English · [한국어](README.ko.md)
+
 # pqcota-discovery — observation (stage 1)
 
 Observes **which cryptographic algorithms a running system actually uses** — not the cryptography itself (no ciphertext, no keys), but **which libraries, providers, and algorithms are loaded, registered, and negotiated**. It captures the **runtime reality** that static document and source scans cannot see (providers registered at runtime, libraries actually loaded, groups actually negotiated on the wire), and attaches a quantum posture to each asset (🟢 PQC/hybrid · 🔴 classical = quantum-vulnerable · ⚪ unknown).

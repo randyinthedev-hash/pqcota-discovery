@@ -1,3 +1,5 @@
+English · [한국어](README.ko.md)
+
 # examples/discovery/jvm: reconnaissance → attach on a running JVM
 
 ```bash
