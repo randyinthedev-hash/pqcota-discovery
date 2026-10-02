@@ -11,7 +11,7 @@ ansible-playbook -i targets.ini ansible/discover.yml
 
 | File | What it does |
 |---|---|
-| [`discover.yml`](discover.yml) | **Ship → run → retrieve → clean up**: puts the collectors in a staging directory and runs them, brings the result JSON back to the controller, then removes everything from the node |
+| [`discover.yml`](discover.yml) | **Ship → run → retrieve → clean up**: puts the collectors in a staging directory and runs them, brings the result JSON back to the controller, then removes the staging directory from the node |
 
 **It branches on the node's OS.** Using the `os_family` that `gather_facts` reports, it runs the three collectors on Linux and two (`pqcota-cngscan` and `pqcota-jvmscan`) on Windows. On anything else it does nothing. That means there is no result, which is not the same as "that node has nothing".
 
@@ -27,9 +27,9 @@ A Windows node has to be **reached with an administrator account** for JVMs runn
 
 How to connect is decided by the `connection` column of `hosts.csv` (`ssh` or `winrm`). `targets.ini` is overwritten on every run, so settings added by hand do not survive → [how to write it](../examples/discovery/README.md). Only the values that differ per site (WinRM transport and certificate validation, an sshd whose default shell is cmd) go in `group_vars/targets_windows.yml`.
 
-> **It has been run once on the real thing** (TD-WIN-1·2): connected with Win32-OpenSSH and a key, ship, observe, retrieve and clean-up all ran to the end, and nothing was left on the node. Note, though, that **the demo does not verify this path**. The demo has only Linux containers, so the Windows branch has no gate that is checked on every run.
+> **It has been run once on the real thing** (TD-WIN-1·2): connected with Win32-OpenSSH and a key, ship, observe, retrieve and clean-up all ran to the end, and the staging directory was gone from the node afterwards. Note, though, that **the demo does not verify this path**. The demo has only Linux containers, so the Windows branch has no gate that is checked on every run.
 
-**Nothing is left on the node.** A collector is not a resident agent but a CLI that exits after it runs, so this one-shot pattern fits.
+**The staging directory is removed when a run completes without failure.** A collector is not a resident agent but a CLI that exits after it runs, so this one-shot pattern fits. Two things stay behind. If a run fails partway, the staging directory stays too, because the clean-up step does not run. And on a node where the Java attach path is used, the observed JVM writes its observation to `/tmp/pqcota-providers-<pid>.txt` in its own `/tmp`, and nothing deletes it.
 
 **The JVM add-on (`collector.jar`) is not sprayed onto every node.** `pqcota-jvmscan --recon` first checks whether the node has a JVM, and the add-on goes only to nodes that do.
 

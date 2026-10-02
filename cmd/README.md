@@ -39,7 +39,7 @@ A `targets.ini` existing does not start any observation. It is only **a means of
 ansible-playbook -i targets.ini ansible/discover.yml
 ```
 
-It does four things — **ship** (the three collectors into `/tmp/pqcota-collector`) → **run** → **retrieve** (the result JSON back to the controller) → **clean up** (nothing is left on the node). A collector is not a resident agent but a CLI that exits when done, so this one-shot pattern fits.
+It does four things — **ship** (the three collectors into `/tmp/pqcota-collector`) → **run** → **retrieve** (the result JSON back to the controller) → **clean up** (the staging directory is removed when the run completes without failure; the file the observed JVM writes in its own `/tmp` on the Java attach path is not removed). A collector is not a resident agent but a CLI that exits when done, so this one-shot pattern fits.
 
 The JVM add-on (`collector.jar`) is **not sprayed onto every node** — `pqcota-jvmscan --recon` first checks whether that node has a JVM, and it is sent only to those that do.
 

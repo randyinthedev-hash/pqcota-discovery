@@ -39,7 +39,7 @@ host=localhost port=5432 user=postgres dbname=pqcota
 ansible-playbook -i targets.ini ansible/discover.yml
 ```
 
-네 가지를 합니다. **배포**(수집기 셋을 `/tmp/pqcota-collector`로) → **실행** → **회수**(결과 JSON을 컨트롤러로) → **정리**(노드에는 아무것도 남지 않음). 수집기는 상주 에이전트가 아니라 끝나면 종료되는 CLI이므로 이런 일회성 방식이 맞습니다.
+네 가지를 합니다. **배포**(수집기 셋을 `/tmp/pqcota-collector`로) → **실행** → **회수**(결과 JSON을 컨트롤러로) → **정리**(실행이 실패 없이 끝나면 스테이징 디렉터리를 지웁니다. Java attach 경로에서 관측 대상 JVM이 자기 `/tmp`에 쓰는 파일은 지우지 않습니다). 수집기는 상주 에이전트가 아니라 끝나면 종료되는 CLI이므로 이런 일회성 방식이 맞습니다.
 
 JVM 애드온(`collector.jar`)은 **모든 노드에 뿌리지 않습니다**. `pqcota-jvmscan --recon`이 먼저 그 노드에 JVM이 있는지 확인하고, JVM이 있는 노드에만 보냅니다.
 
