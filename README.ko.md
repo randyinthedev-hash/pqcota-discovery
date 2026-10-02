@@ -86,7 +86,7 @@ go test ./...   # unit tests only
 
 `make build-jar`는 Java attach 사이드카(`build/collector.jar`, JDK 11 이상 필요)를 빌드합니다. `make build`는 linux/amd64와 windows/amd64용으로도 크로스 컴파일합니다. 수집기의 핵심이 빌드 태그 뒤의 Linux 전용 코드이기 때문입니다.
 
-`go.mod`는 `replace` 지시문(`../pqcota-common` 등)으로 형제 리포지터리를 `../`에서 읽으므로 리포지터리를 나란히 클론해야 합니다. `replace` 줄은 그대로 둡니다. 그것은 리포지터리들 사이의 로컬 연결이고, `require` 줄은 릴리스 태그(현재 `v0.10.2`)를 가리키며 이 작업 공간 밖의 소비자는 그것을 받습니다. [빌드 안내](https://github.com/randyinthedev-hash/pqcota/blob/main/docs/build.ko.md#소스-받기)를 보세요.
+`go.mod`는 `replace` 지시문(`../pqcota-common` 등)으로 형제 리포지터리를 `../`에서 읽으므로 리포지터리를 나란히 클론해야 합니다. `replace` 줄은 그대로 둡니다. 그것은 리포지터리들 사이의 로컬 연결이고, `require` 줄은 릴리스 태그(현재 `v0.10.3`)를 가리키며 이 작업 공간 밖의 소비자는 그것을 받습니다. [빌드 안내](https://github.com/randyinthedev-hash/pqcota/blob/main/docs/build.ko.md#소스-받기)를 보세요.
 
 ## 함께 보기
 

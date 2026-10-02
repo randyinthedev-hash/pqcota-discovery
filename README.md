@@ -86,7 +86,7 @@ go test ./...   # unit tests only
 
 `make build-jar` builds the Java attach sidecar (`build/collector.jar`, needs JDK 11+). `make build` also cross-compiles for linux/amd64 and windows/amd64, since the collectors' core is Linux-only code behind build tags.
 
-`go.mod` reads the sibling repositories from `../` through `replace` directives (`../pqcota-common` and so on), so clone the repositories side by side. The `replace` lines stay: they are the local link between the repositories, while the `require` lines point at the release tag (currently `v0.10.2`), which is what a consumer outside this workspace receives. See the [build guide](https://github.com/randyinthedev-hash/pqcota/blob/main/docs/build.md#get-the-source).
+`go.mod` reads the sibling repositories from `../` through `replace` directives (`../pqcota-common` and so on), so clone the repositories side by side. The `replace` lines stay: they are the local link between the repositories, while the `require` lines point at the release tag (currently `v0.10.3`), which is what a consumer outside this workspace receives. See the [build guide](https://github.com/randyinthedev-hash/pqcota/blob/main/docs/build.md#get-the-source).
 
 ## See also
 

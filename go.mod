@@ -3,8 +3,8 @@ module github.com/randyinthedev-hash/pqcota-discovery
 go 1.26.4
 
 require (
-	github.com/randyinthedev-hash/pqcota-common v0.10.2
-	github.com/randyinthedev-hash/pqcota-inventory v0.10.2
+	github.com/randyinthedev-hash/pqcota-common v0.10.3
+	github.com/randyinthedev-hash/pqcota-inventory v0.10.3
 )
 
 require (
