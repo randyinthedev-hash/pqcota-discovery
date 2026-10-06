@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 randyinthedev
+# SPDX-License-Identifier: Apache-2.0
 # examples/discovery — 접근 준비(hosts→Ansible·엔드포인트)와 결과 적재를 실제로 돌려본다.
 # 전제: Go 툴체인만. Postgres·타깃 노드 불필요(적재는 인메모리 요약 모드).
 set -euo pipefail

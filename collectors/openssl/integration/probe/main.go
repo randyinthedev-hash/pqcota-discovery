@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 randyinthedev
+// SPDX-License-Identifier: Apache-2.0
+
 // Command openssl-collector — PoC/CLI. 주어진 PID의 로드된 OpenSSL을 탐지·출력한다(SD-1·SD-3).
 // 통합 테스트에서 실물 /proc·ELF 검증에 쓰인다.
 package main

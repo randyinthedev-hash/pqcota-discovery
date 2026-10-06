@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 randyinthedev
+# SPDX-License-Identifier: Apache-2.0
 # 컨테이너 내부: (1) attach 성공 경로, (2) attach 차단 시 정적 폴백 경로 검증.
 set -e
 cd /poc

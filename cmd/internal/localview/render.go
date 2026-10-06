@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 randyinthedev
+// SPDX-License-Identifier: Apache-2.0
+
 // Package localview — 수집 결과를 **그 자리에서** 사람이 읽는 뷰로 렌더한다.
 //
 // 중앙(`pqcota-ingest`)이 하는 정규화를 인메모리로 한 번 돌리고 버린다. 저장하지 않으므로

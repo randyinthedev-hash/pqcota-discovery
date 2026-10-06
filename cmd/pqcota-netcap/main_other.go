@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 randyinthedev
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build !linux
 
 // 비-Linux 스텁 — 네트워크 관측은 AF_PACKET 원시 소켓이라 리눅스에서만 성립한다.

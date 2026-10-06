@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 randyinthedev
+// SPDX-License-Identifier: Apache-2.0
+
 // Command pqcota-nodescan — 타깃 노드에서 실행. /proc OpenSSL 스캔 결과를 낸다.
 // 데모에서 Ansible이 각 노드에서 돌려 컨트롤러로 회수한다.
 //

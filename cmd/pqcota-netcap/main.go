@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 randyinthedev
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build linux
 
 // Command pqcota-netcap — 타깃 노드에서 실행. 관측 구간 동안 TLS/SSH 핸드셰이크를 AF_PACKET으로

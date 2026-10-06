@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 randyinthedev
+// SPDX-License-Identifier: Apache-2.0
+
 // Package network — network-collector(디스커버리 설계 §2.3). TLS/SSH
 // 핸드셰이크를 수동 관측해 협상된 KEX 그룹과 통신 엣지를 잡는다. 복호화 없이 평문 핸드셰이크만 본다.
 //

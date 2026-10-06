@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 randyinthedev
+# SPDX-License-Identifier: Apache-2.0
 # jvm-collector (순수 Java) 빌드 + attach 통합 검증. Kotlin·Gradle 불필요 — javac + jar.
 FROM eclipse-temurin:21-jdk
 WORKDIR /poc

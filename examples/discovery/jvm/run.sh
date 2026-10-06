@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 randyinthedev
+# SPDX-License-Identifier: Apache-2.0
 # examples/discovery/jvm — 실행 중 JVM을 **정찰→attach**해 JCA provider 체인(런타임 동적 등록 포함)을 관측한다.
 #
 # 다른 discovery 예제와 달리 **살아있는 JVM**이 필요해 격리했다. openssl collector가 /proc를

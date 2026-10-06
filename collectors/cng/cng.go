@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 randyinthedev
+// SPDX-License-Identifier: Apache-2.0
+
 // Package cng — Windows CNG(Cryptography Next Generation) collector.
 //
 // **왜 별도 collector인가** — CNG는 provider(KSP/SSP) 아키텍처라 JCA와 동형이다(수용 원칙 §2.1).

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 randyinthedev
+// SPDX-License-Identifier: Apache-2.0
+
 // Command pqcota-cngscan — 타깃(Windows) 노드에서 실행. 등록된 CNG provider를 관측해 낸다.
 //
 // usage: pqcota-cngscan [--output json|table] [node-id]

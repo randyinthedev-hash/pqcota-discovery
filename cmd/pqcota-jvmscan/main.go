@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 randyinthedev
+// SPDX-License-Identifier: Apache-2.0
+
 // Command pqcota-jvmscan — 타깃(Java) 노드에서 실행. 실 JVM에 java.security 프로바이더 체인을
 // 조회(Security.getProviders())해 JCA 자산을 CollectionResult JSON으로 낸다.
 //

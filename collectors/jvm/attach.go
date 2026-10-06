@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 randyinthedev
+// SPDX-License-Identifier: Apache-2.0
+
 package jvm
 
 // 정찰(ScanJVMs) → attach 오케스트레이션. openssl의 ScanHost가 프로세스별 탐지를 모으는 것과

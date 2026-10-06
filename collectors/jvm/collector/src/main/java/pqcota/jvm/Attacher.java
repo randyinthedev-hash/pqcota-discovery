@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 randyinthedev
+// SPDX-License-Identifier: Apache-2.0
+
 package pqcota.jvm;
 
 import com.sun.tools.attach.VirtualMachine;

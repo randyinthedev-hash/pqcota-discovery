@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 randyinthedev
+# SPDX-License-Identifier: Apache-2.0
 # jvm-collector attach PoC (S2). 격리 실행 — teardown이 라벨로 정리.
 FROM eclipse-temurin:21-jdk
 WORKDIR /poc

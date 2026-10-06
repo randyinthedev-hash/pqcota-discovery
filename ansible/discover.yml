@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 randyinthedev
+# SPDX-License-Identifier: Apache-2.0
 # pqcota 디스커버리 — collector를 **반입 → 실행 → 회수 → 정리**한다.
 #
 # 컨트롤러(ctl)가 빌드한 collector 바이너리를 각 타깃에 SSH로 밀어 넣고, 그 자리에서 돌린 뒤

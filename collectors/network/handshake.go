@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 randyinthedev
+// SPDX-License-Identifier: Apache-2.0
+
 package network
 
 // Handshake — 하나의 핸드셰이크 관측 결과(파싱 산출). 복호화 없이 평문에서 뽑는 협상 정보만 담는다.

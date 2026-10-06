@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 randyinthedev
+// SPDX-License-Identifier: Apache-2.0
+
 // Command pqcota-hosts — 사용자 관리 hosts 파일(CSV)을 읽어 discovery 접근을 준비한다(§1.5).
 //
 //	(a) 런타임 전용 Ansible 인벤토리 생성(--ansible-out; 비밀 포함, 미영속) → 이걸로 ansible-playbook 실행

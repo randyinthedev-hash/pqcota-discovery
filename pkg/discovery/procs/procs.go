@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 randyinthedev
+// SPDX-License-Identifier: Apache-2.0
+
 // Package procs — app에 라이브 프로세스를 그때그때 이어 붙이기 (자산 모델 §1.5, ProcessMatch).
 // PID는 휘발이라 저장하지 않고, 프로비저닝 직전에 /proc을 스캔해 "지금 이 앱의 프로세스"를 확정한다.
 // (L3 재시작 대상 확정용 — 조회만 한다.)

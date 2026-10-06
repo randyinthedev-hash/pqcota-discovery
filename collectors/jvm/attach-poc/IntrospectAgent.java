@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 randyinthedev
+// SPDX-License-Identifier: Apache-2.0
+
 import java.io.FileWriter;
 import java.lang.instrument.Instrumentation;
 import java.security.Provider;

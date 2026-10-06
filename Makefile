@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 randyinthedev
+# SPDX-License-Identifier: Apache-2.0
 # pqcota-discovery — 디스커버리(collector·CLI·Java 사이드카)의 빌드·테스트
 # 전제: go(go.mod의 toolchain 이상). 이 리포는 형제 모듈을 go.mod의 replace로 ../ 에서 읽는다(작업 공간 배치).
 
