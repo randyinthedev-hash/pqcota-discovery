@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-FileCopyrightText: 2026 randyinthedev
+# SPDX-FileCopyrightText: 2026 Great Honor <randyinthedev@gmail.com>
 # SPDX-License-Identifier: Apache-2.0
 # examples/discovery/jvm — 실행 중 JVM을 **정찰→attach**해 JCA provider 체인(런타임 동적 등록 포함)을 관측한다.
 #

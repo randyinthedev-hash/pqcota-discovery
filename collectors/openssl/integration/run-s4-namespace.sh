@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-FileCopyrightText: 2026 randyinthedev
+# SPDX-FileCopyrightText: 2026 Great Honor <randyinthedev@gmail.com>
 # SPDX-License-Identifier: Apache-2.0
 # SD-4 컨테이너: collector가 별도 컨테이너의 프로세스를 PID 네임스페이스 공유로 탐지(사이드카/hostPID).
 # 양성: --pid=container:target 공유 시 교차 탐지. 음성: 공유 없으면 관측하지 못함 → 갭.

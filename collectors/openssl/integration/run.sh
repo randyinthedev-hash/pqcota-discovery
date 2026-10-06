@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-FileCopyrightText: 2026 randyinthedev
+# SPDX-FileCopyrightText: 2026 Great Honor <randyinthedev@gmail.com>
 # SPDX-License-Identifier: Apache-2.0
 # 호스트: 정적 바이너리 빌드 + 이미지 빌드 + 격리 실행. `source ~/pqcota-sandbox/env.sh` 선행.
 #   bash collectors/openssl/integration/run.sh

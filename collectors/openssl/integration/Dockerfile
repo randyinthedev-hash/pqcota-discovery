@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 randyinthedev
+# SPDX-FileCopyrightText: 2026 Great Honor <randyinthedev@gmail.com>
 # SPDX-License-Identifier: Apache-2.0
 # openssl-collector 실물 통합 테스트 (S1·S3). 격리 실행 — teardown이 라벨로 정리.
 FROM debian:12-slim

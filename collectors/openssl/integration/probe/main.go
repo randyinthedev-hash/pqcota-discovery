@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 randyinthedev
+// SPDX-FileCopyrightText: 2026 Great Honor <randyinthedev@gmail.com>
 // SPDX-License-Identifier: Apache-2.0
 
 // Command openssl-collector — PoC/CLI. 주어진 PID의 로드된 OpenSSL을 탐지·출력한다(SD-1·SD-3).

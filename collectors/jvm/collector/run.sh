@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-FileCopyrightText: 2026 randyinthedev
+# SPDX-FileCopyrightText: 2026 Great Honor <randyinthedev@gmail.com>
 # SPDX-License-Identifier: Apache-2.0
 # 호스트: 순수 Java collector 빌드(컨테이너 내 javac) + attach 통합 검증.
 #   bash collectors/jvm/collector/run.sh

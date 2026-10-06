@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 randyinthedev
+// SPDX-FileCopyrightText: 2026 Great Honor <randyinthedev@gmail.com>
 // SPDX-License-Identifier: Apache-2.0
 
 // Package procs — app에 라이브 프로세스를 그때그때 이어 붙이기 (자산 모델 §1.5, ProcessMatch).

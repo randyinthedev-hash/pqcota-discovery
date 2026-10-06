@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-FileCopyrightText: 2026 randyinthedev
+# SPDX-FileCopyrightText: 2026 Great Honor <randyinthedev@gmail.com>
 # SPDX-License-Identifier: Apache-2.0
 # 컨테이너 내부: libssl 로드한 장수 프로세스 기동 → collector가 /proc·ELF로 탐지 → 검증.
 set -e
