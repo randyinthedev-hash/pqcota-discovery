@@ -94,4 +94,6 @@ go test ./...   # unit tests only
 
 ## 기여 · 보안 · 라이선스
 
-기여와 보안 신고는 [pqcota 리포지터리](https://github.com/randyinthedev-hash/pqcota)에 설명되어 있습니다. 라이선스는 [Apache-2.0](https://github.com/randyinthedev-hash/pqcota/blob/main/LICENSE)입니다.
+기여와 보안 신고는 [pqcota 리포지터리](https://github.com/randyinthedev-hash/pqcota)에 설명되어 있습니다.
+
+Copyright 2026 Great Honor <randyinthedev@gmail.com>. 라이선스는 [Apache License 2.0](https://github.com/randyinthedev-hash/pqcota-discovery/blob/main/LICENSE)(영문)입니다.
