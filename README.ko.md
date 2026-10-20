@@ -22,7 +22,7 @@ flowchart LR
 |---|---|
 | **접근 준비**: `pqcota-hosts` | 사용자가 작성한 `hosts.csv`로 Ansible 인벤토리를 만듭니다 |
 | **수집기 셋** | 아래에 나열합니다. 관측 대상 머신에서 실행되어 `CollectionResult`를 냅니다 |
-| **참조 플레이북**: [`ansible/`](ansible) | 준비된 노드들에 수집기를 배포하고 실행하고 결과를 가져오고 정리합니다 |
+| **참조 플레이북**: [`ansible/`](ansible) | 준비된 노드들에 수집기를 배포하고 실행하고 결과를 가져오며, 성공한 실행이면 스테이징 디렉터리를 지웁니다(Java attach 결과 파일은 대상의 `/tmp`에 남습니다) |
 
 | 수집기 | 무엇을 관측하는가 | 방식 |
 |---|---|---|
@@ -58,7 +58,7 @@ pqcota-ingest ./results                   # ingest the retrieved results into th
 | 증상 | 원인 |
 |---|---|
 | `could not open /proc, so nothing was observed` | Linux가 아닙니다. 결과는 빈 결과가 아니라 **갭**으로 나갑니다 |
-| 스캔하는 프로세스 자신의 자산만 보입니다 | root가 아닙니다. 다른 사용자의 `/proc`을 읽을 수 없습니다(관측하지 못한 것은 갭으로 보고됩니다) |
+| 스캔하는 프로세스 자신의 자산만 보입니다 | root가 아닙니다. 다른 사용자의 `/proc`을 읽을 수 없습니다(읽지 못한 프로세스 수는 표준 오류의 스캔 통계에 나오며 갭으로 기록되지 않습니다) |
 | `no CAP_NET_RAW — could not observe` | `setcap cap_net_raw+ep`를 하거나 root로 실행합니다. 종료 코드는 일부러 0입니다. 갭이 중앙까지 전달되게 하기 위해서입니다 |
 | JVM provider가 **정적 체인만** 보입니다 | attach가 막혀 대체 경로로 돌아갔습니다(`DisableAttachMechanism`, JEP 451, 권한). 런타임에 등록된 provider는 거기서 사각지대이며 갭으로 보고됩니다 |
 | 관측된 연결 간선이 0입니다 | 관측 구간에 핸드셰이크가 오가지 않았습니다. 유휴 연결은 운영 환경에서도 보이지 않습니다. **없다는 뜻이 아니라 관측하지 못했다는 뜻**입니다 |

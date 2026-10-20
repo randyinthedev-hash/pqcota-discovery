@@ -6,7 +6,7 @@ English · [한국어](README.ko.md)
 The CLIs (Go binaries) of the discovery stage. The names look alike, so this page sorts them into three categories by **which one to use when**. All observation is done by the collectors in ② on the target machine; accumulating what they produce centrally is [pqcota-inventory cmd](https://github.com/randyinthedev-hash/pqcota-inventory/blob/main/cmd/README.md)'s job.
 
 ## ① Access prep — setting up discovery access from the user's hosts file
-Before discovery starts, the connection details for the target nodes are defined in a **hosts file the user writes themselves** (CSV). Access secrets (accounts, SSH keys) live only in that file and are **never ingested into the pqcota inventory**.
+Before discovery starts, the connection details for the target nodes are defined in a **hosts file the user writes themselves** (CSV). Access secrets (accounts, SSH keys) live in that file and in the Ansible inventory generated from it (`0600`), and are **never ingested into the pqcota inventory**.
 
 ### `pqcota-hosts`
 
@@ -163,13 +163,13 @@ Progress and warnings go to stderr in both cases — stdout carries only what yo
 
 ### Privileges · environment variables
 
-What you need when running on a node. Insufficient privilege means **the visible range shrinks, or that command cannot run at all**. What was not observed is reported through the completeness map, but it is better to have the privilege in the first place.
+What you need when running on a node. Insufficient privilege means **the visible range shrinks, or that command cannot run at all**. Some of what was not observed is recorded in the completeness map (a blocked attach, a missing `CAP_NET_RAW`), but not all of it: processes whose `/proc` could not be read are only counted on standard error. It is better to have the privilege in the first place.
 
 | Command | Privilege | Environment variables |
 |---|---|---|
 | `pqcota-nodescan` | its own process works as-is. **Seeing other users' requires root** (or `CAP_SYS_PTRACE`) | `PQCOTA_SIGN_KEY` — if set, results are signed (optional) |
 | `pqcota-netcap` | **`CAP_NET_RAW` required** (`setcap` or root) — without it capture never starts | `NETCAP_IFACE` (default `eth0`) · `NETCAP_WINDOW_SEC` (default 8s) |
-| `pqcota-jvmscan` | **the same UID** as the target JVM (or root). If the target blocks attach it degrades to reading the target's `java.security` | `PQCOTA_JVM_AGENT`=path to collector.jar — given, it takes the attach path. **Without it, and with no JVM running**, it starts one to see the launcher's default provider chain, recorded as **degraded** (not an observation of a running app) |
+| `pqcota-jvmscan` | **the same UID** as the target JVM (or root). If the target blocks attach it degrades to reading the target's `java.security` | `PQCOTA_JVM_AGENT`=path to collector.jar — given, it takes the attach path. **Without it and without `--pid`**, it starts a launcher of its own, even if JVMs are running, to see the launcher's default provider chain, recorded as **degraded** (not an observation of a running app) |
 | `pqcota-cngscan` | no special privilege — the `bcrypt.dll` enumeration APIs are read-only queries | `PQCOTA_SIGN_KEY` — if set, results are signed (optional) |
 
 The key pair for `PQCOTA_SIGN_KEY` (and the matching `PQCOTA_VERIFY_KEY` at the centre) comes from [`pqcota-keygen`](https://github.com/randyinthedev-hash/pqcota-common/blob/main/cmd/README.md#pqcota-keygen), which lives in `pqcota-common` because plan approval uses the same kind of key.
@@ -184,9 +184,9 @@ The key pair for `PQCOTA_SIGN_KEY` (and the matching `PQCOTA_VERIFY_KEY` at the 
 | node scan · fork determination · JVM recon | **3.2** (the toolchain floor) | the binary does not run |
 | communication edge observation | no extra requirement (`AF_PACKET` is 2.2-era) | — |
 | app attribution (systemd units) | an environment where systemd runs | attribution falls back to the **executable path** instead of a unit name (upstart-era distros) |
-| **JVM attach inside a container** | **4.1** (`NSpid` in `/proc/<pid>/status`) | falls back to the host PID — only that JVM goes unobserved (reported as a gap) |
+| **JVM attach inside a container** | **4.1** (`NSpid` in `/proc/<pid>/status`) | attach uses the host PID as-is; if that fails, it tries the JDK client and then reads `java.security` statically (the statically registered chain only; dynamic registrations are left as not observed) |
 
-Even below the floor it **never goes silently wrong**. What was not observed goes out as a completeness gap, and without `NSpid` the host PID is used as-is.
+Below 3.2 the binaries do not run, so nothing is reported, not even a gap. Without `NSpid` (below 4.1), the attach uses the host PID as-is; if that fails it tries the JDK client and then reads `java.security` statically, which gives the statically registered chain and leaves dynamic registrations marked as not observed.
 
 **Measured** (in KVM VMs — containers share the host kernel, so this item cannot be verified there):
 

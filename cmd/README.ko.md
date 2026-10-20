@@ -6,7 +6,7 @@
 관측 단계의 CLI(Go 바이너리)입니다. 이름이 서로 비슷해서, 이 문서는 **언제 무엇을 쓰는가**에 따라 세 범주로 나눕니다. 모든 관측은 대상 머신에서 ②의 수집기가 합니다. 수집기가 만든 것을 중앙에 쌓는 일은 [pqcota-inventory cmd](https://github.com/randyinthedev-hash/pqcota-inventory/blob/main/cmd/README.ko.md)가 맡습니다.
 
 ## ① 접근 준비: 사용자의 hosts 파일로 관측 접근 설정하기
-관측을 시작하기 전에, 대상 노드의 접속 정보를 **사용자가 직접 작성하는 hosts 파일**(CSV)에 정의합니다. 접근 비밀(계정, SSH 키)은 그 파일에만 있고 **pqcota 인벤토리에는 절대 적재되지 않습니다**.
+관측을 시작하기 전에, 대상 노드의 접속 정보를 **사용자가 직접 작성하는 hosts 파일**(CSV)에 정의합니다. 접근 비밀(계정, SSH 키)은 그 파일과, 그것으로 만든 Ansible 인벤토리(`0600`)에만 있고 **pqcota 인벤토리에는 절대 적재되지 않습니다**.
 
 ### `pqcota-hosts`
 
@@ -163,13 +163,13 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o dist/windows-amd64/ ./cmd/pq
 
 ### 권한 · 환경변수
 
-노드에서 실행할 때 필요한 것입니다. 권한이 부족하면 **보이는 범위가 줄거나, 그 명령을 아예 실행할 수 없습니다.** 관측하지 못한 것은 완전성 메모로 보고되지만, 처음부터 권한을 갖추는 편이 낫습니다.
+노드에서 실행할 때 필요한 것입니다. 권한이 부족하면 **보이는 범위가 줄거나, 그 명령을 아예 실행할 수 없습니다.** 관측하지 못한 것 가운데 일부는 완전성 메모에 기록되지만(막힌 attach, `CAP_NET_RAW` 없음) 전부는 아닙니다. `/proc`을 읽지 못한 프로세스는 표준 오류에 개수만 나옵니다. 처음부터 권한을 갖추는 편이 낫습니다.
 
 | 명령 | 권한 | 환경변수 |
 |---|---|---|
 | `pqcota-nodescan` | 자기 프로세스는 그대로 동작합니다. **다른 사용자의 프로세스를 보려면 root**(또는 `CAP_SYS_PTRACE`)가 필요합니다 | `PQCOTA_SIGN_KEY`: 설정하면 결과에 서명합니다(선택) |
 | `pqcota-netcap` | **`CAP_NET_RAW` 필수**(`setcap` 또는 root). 없으면 캡처가 시작되지 않습니다 | `NETCAP_IFACE`(기본값 `eth0`) · `NETCAP_WINDOW_SEC`(기본값 8초) |
-| `pqcota-jvmscan` | 대상 JVM과 **같은 UID**(또는 root). 대상이 attach를 막으면 대상의 `java.security`를 읽는 쪽으로 내려갑니다 | `PQCOTA_JVM_AGENT`=collector.jar의 경로: 주면 attach 경로를 택합니다. **주지 않았고 실행 중인 JVM도 없으면** JVM을 하나 시작해 런처의 기본 provider 체인을 보고, **관측 범위가 제한된 대체 결과(degraded)**로 기록합니다(실행 중인 애플리케이션의 관측이 아닙니다) |
+| `pqcota-jvmscan` | 대상 JVM과 **같은 UID**(또는 root). 대상이 attach를 막으면 대상의 `java.security`를 읽는 쪽으로 내려갑니다 | `PQCOTA_JVM_AGENT`=collector.jar의 경로: 주면 attach 경로를 택합니다. **에이전트도 `--pid`도 없으면** JVM이 돌고 있어도 런처를 하나 시작해 그 기본 provider 체인을 보고, **관측 범위가 제한된 대체 결과(degraded)**로 기록합니다(실행 중인 애플리케이션의 관측이 아닙니다) |
 | `pqcota-cngscan` | 특별한 권한 없음: `bcrypt.dll` 열거 API는 읽기 전용 조회입니다 | `PQCOTA_SIGN_KEY`: 설정하면 결과에 서명합니다(선택) |
 
 `PQCOTA_SIGN_KEY`의 키 쌍(그리고 중앙의 짝인 `PQCOTA_VERIFY_KEY`)은 [`pqcota-keygen`](https://github.com/randyinthedev-hash/pqcota-common/blob/main/cmd/README.ko.md#pqcota-keygen)으로 만듭니다. 이 명령은 계획 승인이 같은 종류의 키를 쓰므로 `pqcota-common`에 있습니다.
@@ -184,9 +184,9 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o dist/windows-amd64/ ./cmd/pq
 | 노드 스캔 · 포크 판정 · JVM 정찰 | **3.2**(툴체인 하한) | 바이너리가 실행되지 않습니다 |
 | 통신 연결 간선 관측 | 추가 요건 없음(`AF_PACKET`은 2.2 시대) | 해당 없음 |
 | 앱 식별(systemd 유닛) | systemd가 동작하는 환경 | 식별이 유닛 이름 대신 **실행 파일 경로**로 되돌아갑니다(upstart 시대 배포판) |
-| **컨테이너 안의 JVM attach** | **4.1**(`/proc/<pid>/status`의 `NSpid`) | 호스트 PID로 되돌아가며, 그 JVM만 관측되지 않습니다(갭으로 보고) |
+| **컨테이너 안의 JVM attach** | **4.1**(`/proc/<pid>/status`의 `NSpid`) | 호스트 PID 그대로 붙기를 시도합니다. 실패하면 JDK 클라이언트, 그다음 `java.security` 정적 읽기로 넘어갑니다(정적으로 등록된 체인만 나오고, 동적 등록은 관측하지 못한 것으로 남습니다) |
 
-하한 아래에서도 **아무 표시 없이 잘못 동작하는 일은 없습니다.** 관측하지 못한 것은 완전성 갭으로 나가고, `NSpid`가 없으면 호스트 PID를 그대로 씁니다.
+3.2 미만에서는 프로그램이 실행되지 않으므로 갭을 포함해 아무것도 보고되지 않습니다. `NSpid`가 없으면(4.1 미만) 호스트 PID 그대로 붙기를 시도합니다. 실패하면 JDK 클라이언트, 그다음 `java.security` 정적 읽기로 넘어가며, 이때는 정적으로 등록된 체인만 나오고 동적 등록은 관측하지 못한 것으로 남습니다.
 
 **실측**(KVM VM에서. 컨테이너는 호스트 커널을 공유하므로 이 항목은 거기서 검증할 수 없습니다):
 

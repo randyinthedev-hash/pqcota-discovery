@@ -22,7 +22,7 @@ flowchart LR
 |---|---|
 | **Access prep** — `pqcota-hosts` | builds an Ansible inventory from the `hosts.csv` you wrote |
 | **The three collectors** | listed below. They run on the observed machine and emit a `CollectionResult` |
-| **Reference playbook** — [`ansible/`](ansible) | ships, runs, retrieves, and cleans up collectors across prepared nodes |
+| **Reference playbook** — [`ansible/`](ansible) | ships and runs collectors across prepared nodes, retrieves the results, and removes its staging directory after a successful run (the Java attach file in the target's `/tmp` stays) |
 
 | Collector | What it observes | How |
 |---|---|---|
@@ -58,7 +58,7 @@ Arguments, privileges, and environment variables per command → [cmd/README](cm
 | Symptom | Cause |
 |---|---|
 | `could not open /proc, so nothing was observed` | not Linux. The result goes out as a **gap, not as empty** |
-| only the scanning process's own assets show up | not root — another user's `/proc` is unreadable (whatever was not observed is reported as a gap) |
+| only the scanning process's own assets show up | not root — another user's `/proc` is unreadable (the denied processes are counted in the scan statistics on stderr, not recorded as a gap) |
 | `no CAP_NET_RAW — could not observe` | `setcap cap_net_raw+ep`, or root. The exit code is 0 on purpose — so the gap reaches the center |
 | JVM providers show **only the static chain** | attach was blocked and it fell back (`DisableAttachMechanism`, JEP 451, permissions). Runtime-registered providers are a blind spot there, and that is reported as a gap |
 | zero observed edges | no handshake flowed during the observation window. Idle links are invisible in production too — this is **not absence, it is not-observed** |
