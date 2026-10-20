@@ -71,7 +71,7 @@ JVM 애드온(`collector.jar`)은 **모든 노드에 뿌리지 않습니다**. `
 
 넷 모두 `CollectionResult`를 냅니다. **표에 없는 OS에서 실행하면 빈 결과가 아니라 갭을 내며**, 종료 코드는 0입니다. 「그것이 없는 노드」와 「상태를 보지 못한 노드」는 구분되어야 하기 때문입니다.
 
-**정적 바이너리는 릴리스에 첨부됩니다.** Linux용 셋은 `pqcota-linux-{amd64,arm64}.tar.gz`에, Windows용 둘(`pqcota-cngscan` · `pqcota-jvmscan`)은 `pqcota-windows-amd64.zip`에 들어 있습니다. 각각 `collectors/{openssl,jvm,network,cng}` 패키지를 감싼 얇은 진입점이므로, 새 관측 대상이 생기면 수집기를 하나 더 추가하고 코어는 그대로 둡니다.
+**정적 바이너리는 릴리스에 첨부됩니다.** Linux용 셋은 `pqcota-linux-{amd64,arm64}.tar.gz`에, Windows용 둘(`pqcota-cngscan` · `pqcota-jvmscan`)은 `pqcota-windows-amd64.zip`에 들어 있습니다. 각각 `collectors/{openssl,jvm,network,cng}` 패키지를 감싼 얇은 진입점이므로, 새 관측 대상이 생기면 수집기를 하나 더 추가합니다. 그 대상이 지금 계약의 어휘에 맞으면 코어는 바뀌지 않습니다.
 
 여러 노드에서 한꺼번에 실행하는 방법 → [①의 참조 플레이북](#이어서-만든-인벤토리로-수집기-실행하기).
 

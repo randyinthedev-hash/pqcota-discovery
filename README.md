@@ -2,7 +2,7 @@ English · [한국어](README.ko.md)
 
 # pqcota-discovery — observation (stage 1)
 
-Observes **which cryptographic algorithms a running system actually uses** — not the cryptography itself (no ciphertext, no keys), but **which libraries, providers, and algorithms are loaded, registered, and negotiated**. It captures the **runtime reality** that static document and source scans cannot see (providers registered at runtime, libraries actually loaded, groups actually negotiated on the wire), and attaches a quantum posture to each asset (🟢 PQC/hybrid · 🔴 classical = quantum-vulnerable · ⚪ unknown).
+Observes **which cryptographic algorithms a running system actually uses** — not the cryptography itself (no ciphertext, no keys), but **which libraries, providers, and algorithms are loaded, registered, and negotiated**. It captures the **runtime reality** that static document and source scans cannot see (providers registered at runtime, libraries actually loaded, groups actually negotiated on the wire), and grades each observed connection by the group it negotiated (🟢 PQC/hybrid · 🔴 classical · ⚪ unknown).
 
 **Why runtime** — configuration (`openssl.cnf`, `java.security`, nginx `ssl_ciphers`) is an *allow list*, so it diverges from reality. A PQC group written there falls back to classical if the peer does not support it, and an app may register a provider at runtime that never appears in `java.security`. So the evidence comes from **libraries loaded in the running process** and **algorithms negotiated in the handshake**. When the runtime cannot be reached, it falls back to configuration — but then `evidence_strength` is lowered and the gap is recorded.
 
