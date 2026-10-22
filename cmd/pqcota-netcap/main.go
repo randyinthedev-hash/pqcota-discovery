@@ -68,12 +68,7 @@ func main() {
 			// **관측은 실패했다**고 분명히 밝힌다. 이전 메시지("캡처 불가 → 완전성 갭 강등")는
 			// 무엇이 없는지도 어떻게 고치는지도 알리지 않아, 손으로 돌린 사람이 성공으로 읽었다.
 			exe, _ := os.Executable()
-			fmt.Fprintf(os.Stderr, `[netcap] ✗ nothing was observed — the AF_PACKET socket could not be opened (no CAP_NET_RAW).
-          grant it: sudo setcap cap_net_raw+ep %s   (or run as root)
-          what was emitted is not an observation but **a record that nothing was observed** — it does not mean there are no links.
-          that is why this exits successfully rather than failing: an error exit would keep this record from reaching the centre.
-          use --strict to fail instead.
-`, exe)
+			fmt.Fprint(os.Stderr, captureUnavailableNote(exe, *strict))
 			if *strict {
 				os.Exit(1)
 			}
@@ -140,6 +135,23 @@ func main() {
 }
 
 // attributionNote — 앱을 짚은 결과를 완전성 노트 문장으로. 전부 잡았으면 빈 문자열.
+// captureUnavailableNote — 캡처를 못 열었을 때 stderr로 내는 안내. 마지막 두 줄은 실제 종료 코드와
+// 맞아야 한다. 예전에는 --strict로 1을 내면서도 「그래서 성공으로 끝난다, 실패시키려면 --strict」를
+// 그대로 출력해, 같은 출력에 종료 코드만 다른 두 실행을 사람이 구분할 수 없었다.
+func captureUnavailableNote(exe string, strict bool) string {
+	head := fmt.Sprintf(`[netcap] ✗ nothing was observed — the AF_PACKET socket could not be opened (no CAP_NET_RAW).
+          grant it: sudo setcap cap_net_raw+ep %s   (or run as root)
+          what was emitted is not an observation but **a record that nothing was observed** — it does not mean there are no links.
+`, exe)
+	if strict {
+		return head + `          --strict: exiting 1. The record above is still printed so it can be kept.
+`
+	}
+	return head + `          that is why this exits successfully rather than failing: an error exit would keep this record from reaching the centre.
+          use --strict to fail instead.
+`
+}
+
 func attributionNote(edges int, unattributed map[string]int) string {
 	n := total(unattributed)
 	if n == 0 {

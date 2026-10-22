@@ -35,6 +35,29 @@ func TestAttributionNoteSaysWhatItDoesNotMean(t *testing.T) {
 	}
 }
 
+// TestCaptureUnavailableNoteMatchesExitCode — 캡처를 못 열었을 때의 안내가 실제 종료 코드와 맞는다.
+// --strict는 1로 끝나므로 「성공으로 끝난다」「실패시키려면 --strict」를 말하면 안 된다.
+func TestCaptureUnavailableNoteMatchesExitCode(t *testing.T) {
+	plain := captureUnavailableNote("/x/pqcota-netcap", false)
+	strict := captureUnavailableNote("/x/pqcota-netcap", true)
+	for _, note := range []string{plain, strict} {
+		for _, want := range []string{"nothing was observed", "setcap cap_net_raw+ep /x/pqcota-netcap", "does not mean there are no links"} {
+			if !contains(note, want) {
+				t.Errorf("the note does not contain %q: %s", want, note)
+			}
+		}
+	}
+	if !contains(plain, "exits successfully") || !contains(plain, "use --strict to fail instead") {
+		t.Errorf("without --strict the note must say it exits successfully and how to fail instead: %s", plain)
+	}
+	if contains(strict, "exits successfully") || contains(strict, "use --strict") {
+		t.Errorf("with --strict the note still says it exits successfully: %s", strict)
+	}
+	if !contains(strict, "exiting 1") {
+		t.Errorf("with --strict the note does not say it exits 1: %s", strict)
+	}
+}
+
 func contains(s, sub string) bool {
 	for i := 0; i+len(sub) <= len(s); i++ {
 		if s[i:i+len(sub)] == sub {
