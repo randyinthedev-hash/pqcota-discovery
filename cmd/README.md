@@ -116,7 +116,7 @@ pqcota-netcap [--strict] <node-id> [iface] [window-seconds]
 
 | Argument/option | Default | What it does |
 |---|---|---|
-| `<node-id>` | `host://local` | the node the observations are attributed to |
+| `<node-id>` | the self-id derived from the machine fingerprint, or `host://local` if that is empty too | the node the observations are attributed to |
 | `[iface]` | `eth0` (env `NETCAP_IFACE`) | the interface to capture on |
 | `[window-seconds]` | `8` (env `NETCAP_WINDOW_SEC`) | the length of the observation window |
 | `--strict` | off | fail with exit code 1 when observation is impossible |

@@ -116,7 +116,7 @@ pqcota-netcap [--strict] <node-id> [iface] [window-seconds]
 
 | 인자/옵션 | 기본값 | 하는 일 |
 |---|---|---|
-| `<node-id>` | `host://local` | 관측을 귀속시킬 노드 |
+| `<node-id>` | 머신 지문에서 도출한 자기 id, 그것도 비어 있으면 `host://local` | 관측을 귀속시킬 노드 |
 | `[iface]` | `eth0`(환경변수 `NETCAP_IFACE`) | 캡처할 인터페이스 |
 | `[window-seconds]` | `8`(환경변수 `NETCAP_WINDOW_SEC`) | 관측 구간의 길이 |
 | `--strict` | 꺼짐 | 관측이 불가능하면 종료 코드 1로 실패합니다 |

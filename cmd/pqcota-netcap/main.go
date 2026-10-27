@@ -23,7 +23,10 @@ import (
 	"strings"
 	"time"
 
+	commonv1 "github.com/randyinthedev-hash/pqcota-common/gen/pqcota/common/v1"
 	discoveryv1 "github.com/randyinthedev-hash/pqcota-common/gen/pqcota/discovery/v1"
+	"github.com/randyinthedev-hash/pqcota-common/pkg/kernel/machineid"
+	"github.com/randyinthedev-hash/pqcota-discovery/cmd/internal/nodeid"
 	"github.com/randyinthedev-hash/pqcota-discovery/collectors/network"
 	"github.com/randyinthedev-hash/pqcota-discovery/pkg/discovery/procs"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -33,10 +36,9 @@ func main() {
 	strict := flag.Bool("strict", false, "on failure to observe, exit 1 instead of emitting a gap and succeeding")
 	flag.Parse()
 
-	node := flag.Arg(0)
-	if node == "" {
-		node = "host://local"
-	}
+	// 노드: node-id 인자(CMDB 권위) → 지문의 self-id → host://local(§1.4, 다른 수집기와 같은 규칙).
+	machine = machineid.Fingerprint()
+	node := nodeid.Resolve(flag.Arg(0), machine)
 	iface := envOr("NETCAP_IFACE", "eth0")
 	if a := flag.Arg(1); a != "" {
 		iface = a
@@ -174,7 +176,11 @@ func total(m map[string]int) int {
 	return n
 }
 
+// machine — 이 머신의 지문. main이 한 번 채우고 emit이 결과에 붙인다.
+var machine *commonv1.MachineIdentity
+
 func emit(res *discoveryv1.CollectionResult) {
+	nodeid.Stamp([]*discoveryv1.CollectionResult{res}, machine) // 적재 때 node_id 중복·충돌을 이것으로 잡는다(§1.4)
 	b, err := protojson.MarshalOptions{Multiline: true, Indent: "  "}.Marshal(res)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "marshal:", err)
