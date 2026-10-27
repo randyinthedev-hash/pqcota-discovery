@@ -97,7 +97,7 @@ pqcota-jvmscan --recon
 
 | 인자/옵션 | 하는 일 |
 |---|---|
-| `[node-id]` | 생략하면 `host://local` |
+| `[node-id]` | 기준이 되는 CMDB id입니다. 생략하면 머신 지문에서 결정적인 자기 id를 도출하고, 그것도 없으면 `host://local`을 씁니다 |
 | `--pid N` | 그 PID의 JVM만 관측합니다. 기본값은 recon이 찾은 모든 JVM입니다 |
 | `--recon` | 정찰만 하고, 찾은 JVM을 JSON으로 냅니다(관측은 하지 않음) |
 | `--output` | 출력 형식 → [아래 공통 항목](#--output-nodescan-jvmscan-cngscan-공통) |

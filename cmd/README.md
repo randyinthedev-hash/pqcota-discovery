@@ -97,7 +97,7 @@ pqcota-jvmscan --recon
 
 | Argument/option | What it does |
 |---|---|
-| `[node-id]` | omitted, `host://local` |
+| `[node-id]` | the authoritative CMDB id. Omitted, it derives a deterministic self-id from the machine fingerprint, and failing that uses `host://local` |
 | `--pid N` | observe only the JVM with that PID. The default is every one recon finds |
 | `--recon` | only reconnoiter, emitting the JVMs found as JSON (no observation) |
 | `--output` | output format → [shared, below](#--output--shared-by-nodescan-jvmscan-and-cngscan) |

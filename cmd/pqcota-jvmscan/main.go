@@ -12,6 +12,8 @@
 //
 // usage: pqcota-jvmscan [--output json|table] [--pid N] [node-id]
 //
+//	node-id             생략하면 머신 지문에서 결정론적 self-id, 그것도 없으면 host://local
+//
 //	--output json (기본) CollectionResult JSON을 stdout에 — 중앙이 회수해 적재한다
 //	        table       정규화까지 하고 사람이 읽는 표를 stdout에 — 저장하지 않는다
 //	--pid N             그 PID의 JVM 하나만 관측(기본: 정찰로 찾은 전부)
@@ -29,7 +31,9 @@ import (
 	"path/filepath"
 	"strconv"
 
+	commonv1 "github.com/randyinthedev-hash/pqcota-common/gen/pqcota/common/v1"
 	discoveryv1 "github.com/randyinthedev-hash/pqcota-common/gen/pqcota/discovery/v1"
+	"github.com/randyinthedev-hash/pqcota-common/pkg/kernel/machineid"
 	"github.com/randyinthedev-hash/pqcota-discovery/cmd/internal/localview"
 	"github.com/randyinthedev-hash/pqcota-discovery/collectors/jvm"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -69,10 +73,18 @@ func main() {
 		return
 	}
 
-	node := flag.Arg(0)
+	// 머신 지문 수집. node-id 인자(CMDB 권위)가 있으면 그것, 없으면 지문에서 결정론적 self-id(§1.4).
+	// nodescan·cngscan과 같은 규칙이다 — 달랐을 때 인자 없이 돌리면 같은 머신의 OpenSSL은 node:…로,
+	// JCA는 host://local로 갈라져 한 머신이 두 노드가 된다.
+	fp := machineid.Fingerprint()
+	node := flag.Arg(0) // CMDB 권위 override
 	if node == "" {
-		node = "host://local"
+		node = fp.GetSelfAssignedId() // 자동 self-id(중복 없는 결정론적)
 	}
+	if node == "" {
+		node = "host://local" // 지문도 없을 때 최후 폴백
+	}
+	machine = fp
 
 	// 선행 정찰 — 이 머신에 실제로 도는 JVM을 먼저 조사한다(openssl의 /proc 스캔과 대칭).
 	// 호출자가 JDK 경로를 몰라도 되게, 발견된 JVM의 java 바이너리를 기본값으로 삼는다.
@@ -190,9 +202,17 @@ func main() {
 	fmt.Fprintf(os.Stderr, "[jvmscan] %s: %d providers (default chain of %s)\n", node, len(c.Providers), javaBin)
 }
 
+// machine — 이 머신의 지문. main이 한 번 채우고 emit이 결과마다 붙인다.
+var machine *commonv1.MachineIdentity
+
 // emit — 수집 결과를 요청한 형식으로 낸다. jsonl=true면 한 줄에 하나(여러 JVM), 아니면
 // 들여쓴 단일 객체.
 func emit(mode, node string, results []*discoveryv1.CollectionResult, jsonl bool, headline string) {
+	for _, r := range results {
+		if e := r.GetEnvelope(); e != nil {
+			e.Machine = machine // 상관 지문 부착(§1.4 — 적재 때 node_id 중복·충돌을 이것으로 잡는다)
+		}
+	}
 	if mode == "json" {
 		enc := protojson.MarshalOptions{Multiline: !jsonl, Indent: "  "}
 		for _, r := range results {
