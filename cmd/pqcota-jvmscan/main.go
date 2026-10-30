@@ -40,9 +40,10 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
-// Java 11+ 단일 파일 소스 실행으로 프로바이더 체인을 "N|name|version|class"로 덤프한다
-// (collectors/jvm.ParseProviders 입력 형식과 일치).
+// Java 11+ 단일 파일 소스 실행으로 프로바이더 체인을 "N|name|version|class|PQC 서비스"로 덤프한다
+// (collectors/jvm.ParseProviders 입력 형식, 에이전트 IntrospectAgent와 같은 고르기).
 const probeSrc = `import java.security.*;
+import java.util.*;
 public class Probe {
   public static void main(String[] a){
     Provider[] ps = Security.getProviders();
@@ -50,7 +51,12 @@ public class Probe {
       Provider p = ps[i];
       String v;
       try { v = p.getVersionStr(); } catch (Throwable t){ v = String.valueOf(p.getVersion()); }
-      System.out.println((i+1)+"|"+p.getName()+"|"+v+"|"+p.getClass().getName());
+      TreeSet<String> pqc = new TreeSet<>();
+      for (Provider.Service s : p.getServices()){
+        String n = s.getAlgorithm().toUpperCase(Locale.ROOT).replace("-","").replace("_","");
+        if (n.contains("MLKEM") || n.contains("MLDSA") || n.contains("SLHDSA")) pqc.add(s.getAlgorithm());
+      }
+      System.out.println((i+1)+"|"+p.getName()+"|"+v+"|"+p.getClass().getName()+"|"+String.join(",", pqc));
     }
   }
 }

@@ -7,6 +7,8 @@ import java.io.FileWriter;
 import java.lang.instrument.Instrumentation;
 import java.security.Provider;
 import java.security.Security;
+import java.util.Locale;
+import java.util.TreeSet;
 
 /**
  * 인트로스펙션 에이전트 (S2). 대상 JVM에 주입되므로 **의존성 없이 JDK 클래스만** 쓴다.
@@ -25,7 +27,8 @@ public final class IntrospectAgent {
             sb.append(order++).append('|')
               .append(p.getName()).append('|')
               .append(versionOf(p)).append('|')
-              .append(p.getClass().getName()).append('\n');
+              .append(p.getClass().getName()).append('|')
+              .append(pqcServices(p)).append('\n');
         }
         sb.append("PQCOTA_PROVIDERS_END\n");
         String out = (args != null && !args.isEmpty()) ? args : "/tmp/pqcota-providers.txt";
@@ -34,6 +37,30 @@ public final class IntrospectAgent {
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    /**
+     * provider가 서비스하는 표준 PQC 알고리즘 이름(ML-KEM·ML-DSA·SLH-DSA 계열)을 쉼표로 잇는다. 없으면 빈 칸.
+     *
+     * <p>빈 칸은 「서비스를 봤는데 없었다」이고, 다섯째 칸이 아예 없는 옛 출력은 「보지 않았다」다 — 둘을
+     * 가르려고 칸을 늘 쓴다. provider 이름이나 판으로는 알 수 없다: Temurin 21.0.13은 백포트로 둘을 등록하지만
+     * provider 판은 21.0.12와 같은 "21"이다(2026-10-30 실측). 보는 것은 등록된 서비스 목록까지다 — 연산이 되는지는
+     * 재지 않는다. 여기서는 이름의 모양으로 고르기만 하고, 무엇인지는 코어가 정한다.
+     */
+    private static String pqcServices(Provider p) {
+        TreeSet<String> names = new TreeSet<String>();
+        for (Provider.Service s : p.getServices()) {
+            String n = s.getAlgorithm().toUpperCase(Locale.ROOT).replace("-", "").replace("_", "");
+            if (n.contains("MLKEM") || n.contains("MLDSA") || n.contains("SLHDSA")) {
+                names.add(s.getAlgorithm());
+            }
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String n : names) {
+            if (sb.length() > 0) sb.append(',');
+            sb.append(n);
+        }
+        return sb.toString();
     }
 
     /**

@@ -27,6 +27,11 @@ type Provider struct {
 	Name      string
 	Version   string
 	ClassName string
+
+	// PQCServices — 이 provider가 서비스하는 표준 PQC 알고리즘 이름(다섯째 칸). ServicesSeen이 false면
+	// 서비스를 보지 않은 것이다(정적 폴백, 다섯째 칸이 없던 옛 에이전트). 빈 목록과 다르다.
+	PQCServices  []string
+	ServicesSeen bool
 }
 
 // Collected — 사이드카 출력 파싱 결과. Degraded=true면 attach 불가로 정적 폴백(설계 §2.2, TD-JVM-4).
@@ -44,7 +49,8 @@ type Collected struct {
 	Note string
 }
 
-// ParseProviders — Java 사이드카 출력("N|name|version|class" 또는 정적 폴백)을 파싱.
+// ParseProviders — Java 사이드카 출력("N|name|version|class|PQC 서비스" 또는 정적 폴백)을 파싱.
+// 다섯째 칸이 없는 옛 출력도 읽는다 — 그때는 서비스를 보지 않은 것으로 둔다.
 func ParseProviders(output string) Collected {
 	c := Collected{Degraded: strings.Contains(output, "PQCOTA_STATIC_FALLBACK_BEGIN"), Raw: output}
 	for _, line := range strings.Split(output, "\n") {
@@ -64,6 +70,14 @@ func ParseProviders(output string) Collected {
 		}
 		if len(parts) >= 4 {
 			p.ClassName = parts[3]
+		}
+		if len(parts) >= 5 {
+			p.ServicesSeen = true
+			for _, a := range strings.Split(parts[4], ",") {
+				if a = strings.TrimSpace(a); a != "" {
+					p.PQCServices = append(p.PQCServices, a)
+				}
+			}
 		}
 		c.Providers = append(c.Providers, p)
 	}
@@ -133,8 +147,12 @@ func BuildResultFor(node string, c Collected, ident string) *discoveryv1.Collect
 	}
 
 	names := make([]string, 0, len(c.Providers))
+	var services []string
 	for _, p := range c.Providers {
 		names = append(names, p.Name)
+		if p.ServicesSeen { // 서비스를 봤으면 없었던 것도 적는다(`SunEC=`) — 「없다」와 「안 봤다」는 다르다
+			services = append(services, p.Name+"="+strings.Join(p.PQCServices, "|"))
+		}
 	}
 
 	compName := "jca-provider-chain"
@@ -155,7 +173,7 @@ func BuildResultFor(node string, c Collected, ident string) *discoveryv1.Collect
 		},
 		RawCapture:           []byte(c.Raw),
 		RawFormat:            "jvm-collector/providers-v1",
-		CbomCyclonedx:        buildJcaCycloneDX(names, dmStr, compName, appKeys),
+		CbomCyclonedx:        buildJcaCycloneDX(names, services, dmStr, compName, appKeys),
 		CyclonedxSpecVersion: "1.6",
 		Completeness: &commonv1.Completeness{
 			LayersCovered: covered,
@@ -167,7 +185,9 @@ func BuildResultFor(node string, c Collected, ident string) *discoveryv1.Collect
 
 // buildJcaCycloneDX — provider 체인을 CycloneDX 본문 + pqcota properties(§3.2)로.
 // provider_set은 등록 순서 CSV(수용 원칙 §2.2 우선순위 협상 판정 근거). compName·appKeys로 다중 JVM 구별.
-func buildJcaCycloneDX(providerNames []string, detectionMethod, compName string, appKeys []string) []byte {
+// pqcServices는 `provider=알고리즘|알고리즘` 목록이다. 코어가 이것으로 PQC 지원을 센다. 서비스를 하나도
+// 보지 않았으면(정적 폴백) 비어 있고, 그때는 싣지 않는다.
+func buildJcaCycloneDX(providerNames, pqcServices []string, detectionMethod, compName string, appKeys []string) []byte {
 	type prop struct {
 		Name  string `json:"name"`
 		Value string `json:"value"`
@@ -187,6 +207,9 @@ func buildJcaCycloneDX(providerNames []string, detectionMethod, compName string,
 		{"pqcota:detection_method", detectionMethod},
 		{"pqcota:jca.provider_set", strings.Join(providerNames, ",")},
 		{"pqcota:jca.registration_mode", "dynamic"},
+	}
+	if len(pqcServices) > 0 {
+		props = append(props, prop{"pqcota:jca.pqc_services", strings.Join(pqcServices, ",")})
 	}
 	if len(appKeys) > 0 { // JVM이 여럿일 때의 앱 표시(§1.5와 같은 결) — 어느 JDK/앱의 체인인지
 		props = append(props, prop{"pqcota:app_keys", strings.Join(appKeys, ",")})
