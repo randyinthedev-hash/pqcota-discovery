@@ -37,7 +37,6 @@ import (
 	"github.com/randyinthedev-hash/pqcota-discovery/cmd/internal/localview"
 	"github.com/randyinthedev-hash/pqcota-discovery/cmd/internal/nodeid"
 	"github.com/randyinthedev-hash/pqcota-discovery/collectors/jvm"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // Java 11+ 단일 파일 소스 실행으로 프로바이더 체인을 "N|name|version|class|PQC 서비스"로 덤프한다
@@ -208,17 +207,8 @@ var machine *commonv1.MachineIdentity
 func emit(mode, node string, results []*discoveryv1.CollectionResult, jsonl bool, headline string) {
 	nodeid.Stamp(results, machine) // 상관 지문 부착(§1.4 — 적재 때 node_id 중복·충돌을 이것으로 잡는다)
 	if mode == "json" {
-		enc := protojson.MarshalOptions{Multiline: !jsonl, Indent: "  "}
-		for _, r := range results {
-			b, err := enc.Marshal(r)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "marshal:", err)
-				continue
-			}
-			os.Stdout.Write(b)
-			if jsonl {
-				os.Stdout.Write([]byte("\n"))
-			}
+		if err := jvm.EncodeResults(os.Stdout, results, jsonl); err != nil {
+			fmt.Fprintln(os.Stderr, err)
 		}
 	}
 	if mode == "table" {
