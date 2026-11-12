@@ -32,6 +32,14 @@ build:
 # 상관없다. 한 번에 컴파일하면 전부 빌드 JDK의 클래스 버전이 되어 **낡은 JVM에서 로드조차 안 된다**
 # (실측: JDK 21로 만든 jar은 17·11·8에서 LinkageError).
 JVM_COLLECTOR := collectors/jvm/collector
+
+# collector.jar의 manifest에 싣는 판·커밋. 릴리스 워크플로는 태그와 태그 커밋을 넘긴다(JAR_VERSION·JAR_COMMIT·
+# JAR_DIRTY=false). 직접 빌드하면 이 체크아웃의 git에서 읽고, git이 없으면 devel·unknown이다. 판정에 쓰는 값이라
+# 짐작으로 채우지 않는다. JAR_DATE는 항목 시각을 커밋 시각으로 고정한다(jar --date가 있는 JDK에서만).
+JAR_VERSION ?= $(shell git describe --tags --dirty 2>/dev/null || echo devel)
+JAR_COMMIT  ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
+JAR_DIRTY   ?= $(shell if git rev-parse HEAD >/dev/null 2>&1; then if [ -z "$$(git status --porcelain --untracked-files=no)" ]; then echo false; else echo true; fi; else echo unknown; fi)
+JAR_DATE    ?= $(shell git log -1 --format=%cI 2>/dev/null || echo 1980-01-01T00:00:02Z)
 build-jar:
 	@if ! command -v javac >/dev/null; then \
 	  echo "⚠ javac 없음 — Java 사이드카 빌드 건너뜀(JDK 11+ 필요). collector.jar가 없으면 attach 경로를 쓸 수 없다."; \
@@ -42,8 +50,17 @@ build-jar:
 	  $(JVM_COLLECTOR)/src/main/java/pqcota/jvm/IntrospectAgent.java && \
 	javac --release 11 -nowarn -d build/jvmcls \
 	  $(JVM_COLLECTOR)/src/main/java/pqcota/jvm/Attacher.java && \
-	jar cfm build/collector.jar $(JVM_COLLECTOR)/manifest.mf -C build/jvmcls . && \
-	rm -rf build/jvmcls && \
+	{ cat $(JVM_COLLECTOR)/manifest.mf; \
+	  echo "Implementation-Title: pqcota-discovery collector"; \
+	  echo "Implementation-Version: $(JAR_VERSION)"; \
+	  echo "X-Pqcota-Commit: $(JAR_COMMIT)"; \
+	  echo "X-Pqcota-Dirty: $(JAR_DIRTY)"; } > build/jvmcls.mf && \
+	if jar --help 2>&1 | grep -q -- '--date'; then \
+	  jar --create --file build/collector.jar --manifest build/jvmcls.mf --date="$(JAR_DATE)" -C build/jvmcls . ; \
+	else \
+	  jar cfm build/collector.jar build/jvmcls.mf -C build/jvmcls . ; \
+	fi && \
+	rm -rf build/jvmcls build/jvmcls.mf && \
 	echo "✓ Java 사이드카: build/collector.jar"
 
 # gofmt 게이트 — CONTRIBUTING이 gofmt를 규정하는데 검사가 없어 미포맷이 8건까지 쌓인 적이 있다.
