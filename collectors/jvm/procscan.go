@@ -41,8 +41,13 @@ func ScanJVMs() ([]JVMProc, JVMScanStats) {
 		}
 		st.WithJVM++
 		home := deriveJavaHome(exe, libjvm)
+		base := filepath.Join("/proc", e.Name())
+		cmdline, _ := os.ReadFile(filepath.Join(base, "cmdline"))
+		cwd, _ := os.Readlink(filepath.Join(base, "cwd")) // 못 읽으면 빈 값 — 상대 -jar는 약한 키로 내려간다
+		cgroup, _ := os.ReadFile(filepath.Join(base, "cgroup"))
 		out = append(out, JVMProc{
-			PID: pid, Exe: exe, App: readMainId(pid), JavaHome: home,
+			PID: pid, Exe: exe, App: parseMainId(string(cmdline)), JavaHome: home,
+			Cmdline: string(cmdline), Cwd: cwd, Cgroup: string(cgroup),
 			JavaBin:       javaBinFor(home, exe),
 			Version:       readReleaseVersion(home),
 			ViaLibjvm:     !isJavaExe(exe) && libjvm != "",
@@ -68,12 +73,4 @@ func findLibjvm(pid int) string {
 		}
 	}
 	return ""
-}
-
-func readMainId(pid int) string {
-	b, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "cmdline"))
-	if err != nil {
-		return ""
-	}
-	return parseMainId(string(b))
 }

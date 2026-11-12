@@ -27,6 +27,11 @@ type JVMProc struct {
 	// ★ 이게 false여도 attach를 포기하지 않는다 — Go 네이티브 경로(①)는 JDK 없이 붙는다.
 	// 이 값은 **② JDK 클라이언트 폴백의 후보 선택**(OpenJ9 등)과 실패 사유 설명에 쓰인다.
 	AttachCapable bool
+
+	// 배포본 키(DeploymentKey)의 재료. 리눅스에서만 채운다. 비면 그다음 키로 내려간다.
+	Cmdline string // /proc/<pid>/cmdline 그대로(NUL 구분). 키를 만드는 데만 쓰고 결과에 싣지 않는다
+	Cwd     string // /proc/<pid>/cwd를 따라간 결과. 상대 -jar·classpath를 푼다
+	Cgroup  string // /proc/<pid>/cgroup. systemd 서비스를 찾는다
 }
 
 // Ident — 이 JVM을 자산으로 구별하는 안정 식별자. 앱(main·jar)이 있으면 그것 —

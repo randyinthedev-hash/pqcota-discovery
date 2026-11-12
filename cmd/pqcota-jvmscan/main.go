@@ -147,7 +147,8 @@ func main() {
 		}
 		fmt.Fprintf(os.Stderr, "[jvmscan] static fallback pid=%d: %d providers (dynamic registrations are a blind spot — not observed)\n",
 			j.PID, len(c.Providers))
-		emit(*out, node, []*discoveryv1.CollectionResult{jvm.BuildResultFor(node, c, j.Ident())}, false,
+		d := jvm.GroupDeployments([]jvm.Member{{JVM: j, Collected: &c}})[0]
+		emit(*out, node, []*discoveryv1.CollectionResult{jvm.BuildDeploymentResult(node, d)}, false,
 			fmt.Sprintf("1 JVM observed (pid %d, static path)", j.PID))
 		return
 	}
@@ -193,7 +194,9 @@ func main() {
 	// 못 찾은 것, 프로세스 목록을 못 읽은 것을 한 문장으로 적으면 읽는 사람이 관측 범위를 잘못 안다.
 	why := probeReason(len(jvms), st.ProcUnavailable)
 	c.Note = why + " — the machine's java launcher was started for this probe, so this is its default provider chain, not an observation of a running app (the runtime registrations of real apps are a blind spot)"
-	emit(*out, node, []*discoveryv1.CollectionResult{jvm.BuildResult(node, c)}, false,
+	// 실행 중 앱이 아니므로 배포본과 섞지 않는다(`jca-launcher-default@<JAVA_HOME>`).
+	launcher := jvm.LauncherHome(javaBin)
+	emit(*out, node, []*discoveryv1.CollectionResult{jvm.BuildLauncherDefaultResult(node, launcher, c)}, false,
 		"0 JVMs observed — probed the machine's java launcher instead")
 	fmt.Fprintf(os.Stderr, "[jvmscan] ⚠ %s. The machine's java launcher was started to probe instead — this is not an observation of a running app\n", why)
 	fmt.Fprintf(os.Stderr, "[jvmscan] %s: %d providers (default chain of %s)\n", node, len(c.Providers), javaBin)
@@ -332,19 +335,26 @@ func attachAll(node string, jvms []jvm.JVMProc, agent string) (res []*discoveryv
 		return c, nil
 	}
 	results, ast := jvm.AttachAll(jvms, attach)
-	out := make([]*discoveryv1.CollectionResult, 0, len(results))
+	members := make([]jvm.Member, 0, len(results))
 	for _, r := range results {
 		if r.Err != nil {
-			// 결과를 안 내면 이 JVM이 있었다는 사실이 중앙에 닿지 않는다 — 갭을 실어 보낸다(§2.6).
-			fmt.Fprintf(os.Stderr, "[jvmscan] attach failed pid=%d: %v (gap)\n", r.JVM.PID, r.Err)
-			out = append(out, jvm.GapResult(node, r.JVM.Ident(),
-				"a JVM was found but could not be observed: "+r.Err.Error()))
+			// 결과를 안 내면 이 JVM이 있었다는 사실이 중앙에 닿지 않는다. 배포본의 변형(체인 없음)으로 남기고,
+			// 배포본의 JVM을 하나도 못 봤으면 배포본이 갭 결과가 된다(§2.6).
+			fmt.Fprintf(os.Stderr, "[jvmscan] attach failed pid=%d: %v (not observed)\n", r.JVM.PID, r.Err)
+			members = append(members, jvm.Member{JVM: r.JVM, Err: r.Err})
 			continue
 		}
-		// 식별자는 앱(main·jar) 우선, 없으면 JAVA_HOME→exe — PID는 휘발이라 이력이 깨진다.
-		out = append(out, jvm.BuildResultFor(node, r.Collected, r.JVM.Ident()))
+		c := r.Collected
+		members = append(members, jvm.Member{JVM: r.JVM, Collected: &c})
 	}
-	fmt.Fprintf(os.Stderr, "[jvmscan] attach: found %d · ok %d · failed %d (gap) → emitted %d\n",
+	// 배포본마다 결과 하나(JCA 식별 1단계). 키는 systemd 서비스 → -jar 절대 경로 → … 순이고 PID는 쓰지 않는다.
+	deps := jvm.GroupDeployments(members)
+	out := make([]*discoveryv1.CollectionResult, 0, len(deps))
+	for _, d := range deps {
+		fmt.Fprintf(os.Stderr, "[jvmscan] deployment %s (%s): %d JVM(s)\n", d.Key, d.Kind, len(d.Members))
+		out = append(out, jvm.BuildDeploymentResult(node, d))
+	}
+	fmt.Fprintf(os.Stderr, "[jvmscan] attach: found %d · ok %d · failed %d (not observed) → %d deployment(s)\n",
 		ast.Discovered, ast.Attached, ast.Failed, len(out))
 	return out, ast.Attached
 }
