@@ -23,7 +23,8 @@ type attributeFunc func(localIP string, localPort uint32, remoteIP string, remot
 // aggregate — 관측(핸드셰이크 메시지)을 연결로 모으고, 연결마다 앱을 짚은 뒤, 앱 키별로 엣지를 만든다.
 //
 //  1. **연결로 모은다.** TLS는 ClientHello와 ServerHello가 따로 관측된다. 같은 연결(출발 포트까지 같은
-//     것)의 관측은 하나로 합친다. 그래서 observed_count는 **본 연결의 수**다. 협상 그룹은 ServerHello에만
+//     것)의 관측은 하나로 합친다. 그래서 observed_count는 **핸드셰이크를 관측한 고유 연결 튜플의 수**다. 같은
+//     튜플이 구간 안에서 재사용되면 따로 세지 않는다. 협상 그룹은 ServerHello에만
 //     실리므로 그룹이 있는 관측의 값을 쓴다.
 //  2. **연결마다 앱을 짚는다.** 두 끝점이 맞는 소켓 하나로 짚는다([procs.Attributor.Conn]). 못 짚으면
 //     앱 키를 비우고 사유를 센다. 같은 목적지의 다른 연결로 대신 짚지 않는다.
