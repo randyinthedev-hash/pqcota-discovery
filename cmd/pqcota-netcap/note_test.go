@@ -20,7 +20,7 @@ func TestAttributionNoteSaysWhatItDoesNotMean(t *testing.T) {
 	if got == "" {
 		t.Fatal("some edges were not attributed but the note is empty")
 	}
-	for _, want := range []string{"3 of 5 edges", "does not mean there is no app", "socket closed(2)", "no permission(1)"} {
+	for _, want := range []string{"3 of 5 observed connections", "does not mean there is no app", "socket closed(2)", "no permission(1)"} {
 		if !contains(got, want) {
 			t.Errorf("the note does not contain %q: %s", want, got)
 		}

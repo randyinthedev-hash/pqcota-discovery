@@ -68,28 +68,66 @@ func Resolve(procRoot string, m *discoveryv1.ProcessMatch) ([]*discoveryv1.LiveP
 	return out, nil
 }
 
-// AppKey — PID에서 안정 app_key를 파생한다(§1.5 자산이 어느 앱 것인지). systemd 유닛(cgroup) 우선, 없으면 exe 경로.
-// 반환: (app_key, kind). 둘 다 실패면 ("","").
+// 앱 키의 종류. JVM 수집기도 같은 값을 쓴다(그쪽에는 JVM에만 있는 종류가 더 있다).
+const (
+	KindSystemdUnit     = "systemd-unit"
+	KindSystemdUserUnit = "systemd-user-unit"
+	KindExePath         = "exe-path"
+)
+
+// AppKey — PID에서 안정 app_key를 파생한다(§1.5 자산이 어느 앱 것인지). systemd 서비스(cgroup,
+// [ServiceKey]) 우선, 없으면 exe 경로. 반환: (app_key, kind). 둘 다 실패면 ("","").
+//
+// OpenSSL 수집기와 통신 엣지가 이 함수를 쓰고, JVM 수집기는 [ServiceKey]를 직접 쓴다. 규칙은 한 곳에만 있다.
 func AppKey(procRoot string, pid int) (key, kind string) {
 	base := filepath.Join(procRoot, strconv.Itoa(pid))
-	if u := systemdUnit(readText(filepath.Join(base, "cgroup"))); u != "" {
-		return u, "systemd-unit"
+	if k, kd := ServiceKey(readText(filepath.Join(base, "cgroup"))); k != "" {
+		return k, kd
 	}
 	if exe, err := os.Readlink(filepath.Join(base, "exe")); err == nil && exe != "" {
-		return exe, "exe-path"
+		return exe, KindExePath
 	}
 	return "", ""
 }
 
-// systemdUnit — cgroup 텍스트에서 *.service/*.scope 유닛명을 뽑는다(예: /system.slice/payment.service → payment.service).
-func systemdUnit(cgroup string) string {
-	for _, seg := range strings.Split(strings.ReplaceAll(cgroup, "\n", "/"), "/") {
-		seg = strings.TrimSpace(seg)
-		if strings.HasSuffix(seg, ".service") || strings.HasSuffix(seg, ".scope") {
-			return seg
+// ServiceKey — cgroup 텍스트에서 systemd **서비스**를 찾는다.
+//   - 경로 마디 가운데 `.service`로 끝나는 **마지막** 것을 쓴다.
+//   - `user@<uid>.service`(사용자 관리자)는 후보가 아니다. 그 아래의 서비스가 실제 앱이다.
+//   - `.scope`(session-N, init.scope, docker-<id>, app-…-<pid>)는 쓰지 않는다. 세션·실행마다 이름이
+//     바뀌어 앱 키로 오래 가지 않는다. 없으면 호출자가 exe 경로로 넘어간다.
+//   - 사용자 관리자 아래의 서비스면 키는 `user@<uid>.service/<유닛>`이다. 이름 `foo.service`는 사용자마다의
+//     관리자 아래에 따로 있을 수 있어, 이름만 쓰면 한 노드에서 다시 합쳐진다.
+//
+// v0.12.0까지 OpenSSL·엣지는 처음 나오는 `.service`·`.scope`를 골라, 같은 UID의 사용자 서비스가
+// 모두 `user@<uid>.service` 하나로 접혔다.
+func ServiceKey(cgroup string) (key, kind string) {
+	for _, line := range strings.Split(cgroup, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
 		}
+		path := line
+		if i := strings.LastIndex(line, ":"); i >= 0 { // "0::/a/b" · "1:name=systemd:/a/b"
+			path = line[i+1:]
+		}
+		manager, unit := "", ""
+		for _, seg := range strings.Split(path, "/") {
+			switch {
+			case strings.HasPrefix(seg, "user@") && strings.HasSuffix(seg, ".service"):
+				manager, unit = seg, "" // 관리자 아래에서 다시 찾는다
+			case strings.HasSuffix(seg, ".service"):
+				unit = seg
+			}
+		}
+		if unit == "" {
+			continue
+		}
+		if manager != "" {
+			return manager + "/" + unit, KindSystemdUserUnit
+		}
+		return unit, KindSystemdUnit
 	}
-	return ""
+	return "", ""
 }
 
 func readCmdline(p string) string {

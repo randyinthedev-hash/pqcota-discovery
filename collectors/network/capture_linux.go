@@ -8,6 +8,7 @@ package network
 import (
 	"fmt"
 	"net"
+	"strconv"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -113,7 +114,9 @@ type sshKexPair struct {
 func newSSHPending() *sshPending { return &sshPending{byKey: map[string]*sshKexPair{}} }
 
 func (p *sshPending) add(conn ConnTuple, hs *Handshake, fromSelf bool) {
-	key := fmt.Sprintf("%s|%s|%d", conn.SrcNode, conn.DstAddr, conn.Port)
+	// 연결마다 따로 모은다(출발 포트까지). 같은 목적지의 SSH 연결이 여럿이면 KEXINIT이 섞이지 않고,
+	// 연결마다 앱을 짚을 수 있다.
+	key := fmt.Sprintf("%s|%s|%d|%s", conn.SrcNode, conn.DstAddr, conn.Port, conn.LocalAddr)
 	e, ok := p.byKey[key]
 	if !ok {
 		e = &sshKexPair{conn: conn}
@@ -151,9 +154,9 @@ func (p *sshPending) resolve() []Observation {
 // 로컬이 클라이언트일 때만 방출(emit=true)한다 — 양쪽에서 잡히는 중복과 방향 혼선을 없앤다.
 // 서버측에서 본 핸드셰이크는 상대(클라이언트) 노드가 보고한다. IP→노드 잇기는 코어(§1.4).
 func (s *LiveSource) edgeFor(seg *Segment) (ConnTuple, bool) {
-	serverIP, serverPort, clientIP := seg.SrcIP, seg.SrcPort, seg.DstIP
+	serverIP, serverPort, clientIP, clientPort := seg.SrcIP, seg.SrcPort, seg.DstIP, seg.DstPort
 	if seg.SrcPort > seg.DstPort { // 낮은 포트가 서버
-		serverIP, serverPort, clientIP = seg.DstIP, seg.DstPort, seg.SrcIP
+		serverIP, serverPort, clientIP, clientPort = seg.DstIP, seg.DstPort, seg.SrcIP, seg.SrcPort
 	}
 	if !s.SelfIPs[clientIP] {
 		return ConnTuple{}, false // 로컬은 서버(또는 무관) — 방출 안 함
@@ -163,5 +166,6 @@ func (s *LiveSource) edgeFor(seg *Segment) (ConnTuple, bool) {
 		DstAddr:      fmt.Sprintf("%s:%d", serverIP, serverPort),
 		Port:         uint32(serverPort),
 		SrcInitiated: true,
+		LocalAddr:    net.JoinHostPort(clientIP, strconv.Itoa(int(clientPort))),
 	}, true
 }

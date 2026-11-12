@@ -15,6 +15,7 @@ import (
 
 	commonv1 "github.com/randyinthedev-hash/pqcota-common/gen/pqcota/common/v1"
 	discoveryv1 "github.com/randyinthedev-hash/pqcota-common/gen/pqcota/discovery/v1"
+	"github.com/randyinthedev-hash/pqcota-discovery/pkg/discovery/procs"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -27,55 +28,17 @@ import (
 
 // Kind — 배포본 키를 무엇으로 골랐나(계약의 JcaAxes.app_key_kind).
 const (
-	KindSystemdUnit     = "systemd-unit"
-	KindSystemdUserUnit = "systemd-user-unit"
+	KindSystemdUnit     = procs.KindSystemdUnit
+	KindSystemdUserUnit = procs.KindSystemdUserUnit
 	KindJarPath         = "jar-path"
 	KindJarName         = "jar-name" // 약한 키: cwd를 못 풀어 파일 이름만 남았다
 	KindModule          = "module"
 	KindMainClass       = "main-class"
 	KindSourceFile      = "source-file"
-	KindJavaHome        = "java-home" // 약한 키: JDK 하나에 앱이 여럿일 수 있다
-	KindExePath         = "exe-path"  // 약한 키: JAVA_HOME도 못 짚었다
+	KindJavaHome        = "java-home"       // 약한 키: JDK 하나에 앱이 여럿일 수 있다
+	KindExePath         = procs.KindExePath // 약한 키: JAVA_HOME도 못 짚었다
 	KindLauncherDefault = "launcher-default"
 )
-
-// systemdServiceKey — cgroup 텍스트에서 systemd **서비스**를 찾는다(결정 A).
-//   - 경로 마디 가운데 `.service`로 끝나는 **마지막** 것을 쓴다.
-//   - `user@<uid>.service`(사용자 관리자)는 후보가 아니다. 그 아래의 서비스가 실제 앱이다.
-//   - `.scope`(session-N, docker-<id>, app-…-<pid>)는 쓰지 않는다.
-//   - 사용자 관리자 아래의 서비스면 키는 `user@<uid>.service/<유닛>`이다. 이름 `foo.service`는 사용자마다의
-//     관리자 아래에 따로 있을 수 있어, 이름만 쓰면 한 노드에서 다시 합쳐진다.
-//
-// procs.systemdUnit(OpenSSL·엣지)은 처음 나오는 `.service`·`.scope`를 고른다. 그쪽은 2단계에서 고친다.
-func systemdServiceKey(cgroup string) (key, kind string) {
-	for _, line := range strings.Split(cgroup, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		path := line
-		if i := strings.LastIndex(line, ":"); i >= 0 { // "0::/a/b" · "1:name=systemd:/a/b"
-			path = line[i+1:]
-		}
-		manager, unit := "", ""
-		for _, seg := range strings.Split(path, "/") {
-			switch {
-			case strings.HasPrefix(seg, "user@") && strings.HasSuffix(seg, ".service"):
-				manager, unit = seg, "" // 관리자 아래에서 다시 찾는다
-			case strings.HasSuffix(seg, ".service"):
-				unit = seg
-			}
-		}
-		if unit == "" {
-			continue
-		}
-		if manager != "" {
-			return manager + "/" + unit, KindSystemdUserUnit
-		}
-		return unit, KindSystemdUnit
-	}
-	return "", ""
-}
 
 // launch — 명령줄에서 읽은 JVM 옵션과 실행 대상. 실행 대상 뒤의 인자는 앱의 것이라 보지 않는다.
 type launch struct {
@@ -146,7 +109,7 @@ func absUnder(cwd, p string) (string, bool) {
 // systemd 서비스 → -jar 절대 경로 → 모듈 → main 클래스 + classpath → 소스 파일 → JAVA_HOME → exe.
 // **키는 줄이지 않는다.** 코어가 컴포넌트 이름의 키로 finding id를 만든다(계약 README의 app_key_kind).
 func DeploymentKey(j JVMProc) (key, kind string) {
-	if k, kd := systemdServiceKey(j.Cgroup); k != "" {
+	if k, kd := procs.ServiceKey(j.Cgroup); k != "" { // 규칙은 OpenSSL·엣지와 같다(결정 A)
 		return k, kd
 	}
 	l := parseLaunch(j.Cmdline)

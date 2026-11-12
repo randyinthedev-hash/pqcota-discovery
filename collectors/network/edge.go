@@ -28,6 +28,9 @@ type ConnTuple struct {
 	DstAddr      string // 원시 상대 주소 "ip:port" — off-scope 판정 근거(§1.4, IC-E3)
 	Port         uint32
 	SrcInitiated bool // src가 TCP 연결 개시자면 src=client (역할 방향의 근거)
+	// LocalAddr — 이 연결의 로컬(클라이언트) 쪽 "ip:port". **소켓을 찾는 데만 쓴다**(앱 귀속). 엣지에는
+	// 싣지 않는다 — 출발 포트가 엣지에 들어가면 같은 앱이 다시 붙을 때마다 엣지가 새로 생긴다.
+	LocalAddr string
 }
 
 // BuildEdge — 파싱된 핸드셰이크 + 연결 튜플 → 관측 통신 엣지(ObservedEdge). TD-NETWORK-4.

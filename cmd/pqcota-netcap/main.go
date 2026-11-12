@@ -80,47 +80,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 같은 엣지의 여러 관측(ClientHello/ServerHello 등)을 키별로 병합한다.
-	// TLS는 ServerHello에만 협상 그룹이 실리므로 "그룹 있는 관측"을 우선 채택한다.
 	self := src.SelfIPs
-	// 앱은 **엣지를 보는 그 자리에서** 짚는다. 캡처가 끝난 뒤 몰아 하면 그 사이에 닫힌 소켓을
-	// 더 놓친다. 비싼 fd 스캔만 구간 안에서 짧게 재사용한다.
+	// 관측을 연결로 모으고, 연결마다 두 끝점이 맞는 소켓으로 앱을 짚은 뒤, 앱 키별로 엣지를 만든다
+	// (aggregate). 비싼 fd 스캔만 구간 안에서 짧게 재사용한다.
 	att := procs.NewAttributor("/proc", time.Second)
-	unattributed := map[string]int{} // 사유 → 건수
-	byKey := map[string]*discoveryv1.ObservedEdge{}
-	var order []string
-	for _, o := range obs {
-		if o.HS == nil || !network.ShouldObserve(o.Conn, self) {
-			continue
-		}
-		e := network.BuildEdge(o.Conn, o.HS)
-		k := fmt.Sprintf("%s|%s|%d|%d", e.GetSrcNodeId(), e.GetDstAddr(), e.GetPort(), e.GetProtocol())
-		if ex, ok := byKey[k]; ok {
-			ex.ObservedCount++
-			if ex.GetNegotiatedGroup() == "" && e.GetNegotiatedGroup() != "" {
-				ex.NegotiatedGroup = e.GetNegotiatedGroup()
-				ex.Cipher = e.GetCipher()
-			}
-		} else {
-			if ip, _, err := net.SplitHostPort(e.GetDstAddr()); err == nil {
-				a := att.Remote(ip, e.GetPort())
-				e.AppKey, e.AppKeyKind = a.Key, a.Kind
-				if a.Key == "" {
-					unattributed[a.Reason]++
-				}
-			}
-			byKey[k] = e
-			order = append(order, k)
-		}
-	}
-	edges := make([]*discoveryv1.ObservedEdge, 0, len(order))
-	for _, k := range order {
-		edges = append(edges, byKey[k])
-	}
+	agg := aggregate(obs, self, att.Conn)
+	edges, conns, unattributed := agg.edges, agg.conns, agg.unattributed
 	// 구간이 중간에 끊겼으면 "관측 없음"과 구별되게 노트에 남긴다 — 결함을 갭으로 위장하지 않는다.
 	// 어느 앱인지 못 밝힌 엣지는 **"앱 없음"이 아니라 "어느 앱인지 밝히지 못함"이다.** 사유별로 몇 건인지
 	// 완전성 노트에 남긴다 — 안 적으면 빈 app_key가 "이 통신에 앱이 없다"로 읽힌다.
-	note := attributionNote(len(order), unattributed)
+	note := attributionNote(conns, unattributed)
 	if src.Truncated {
 		note = strings.TrimSpace(note + " " + fmt.Sprintf("observation window cut short by a read error (%v) — this result does not represent the whole window (gap != absence)", src.TruncErr))
 		fmt.Fprintln(os.Stderr, "[netcap] ⚠ "+note)
@@ -128,15 +97,17 @@ func main() {
 	emit(network.BuildResult(node, edges, note))
 	fmt.Fprintf(os.Stderr, "[netcap] %d observed edges", len(edges))
 	if n := total(unattributed); n > 0 {
-		fmt.Fprintf(os.Stderr, "  · %d without an app", n)
+		fmt.Fprintf(os.Stderr, "  · %d of %d connections without an app", n, conns)
 	}
 	fmt.Fprintln(os.Stderr)
 	for reason, n := range unattributed {
 		fmt.Fprintf(os.Stderr, "[netcap]   %d: %s\n", n, reason)
 	}
+	for _, m := range agg.missed { // 어느 연결이었는지 — 출발 포트는 여기에만 나온다(결과에는 없다)
+		fmt.Fprintf(os.Stderr, "[netcap]   unattributed %s\n", m)
+	}
 }
 
-// attributionNote — 앱을 짚은 결과를 완전성 노트 문장으로. 전부 잡았으면 빈 문자열.
 // captureUnavailableNote — 캡처를 못 열었을 때 stderr로 내는 안내. 마지막 두 줄은 실제 종료 코드와
 // 맞아야 한다. 예전에는 --strict로 1을 내면서도 「그래서 성공으로 끝난다, 실패시키려면 --strict」를
 // 그대로 출력해, 같은 출력에 종료 코드만 다른 두 실행을 사람이 구분할 수 없었다.
@@ -154,7 +125,9 @@ func captureUnavailableNote(exe string, strict bool) string {
 `
 }
 
-func attributionNote(edges int, unattributed map[string]int) string {
+// attributionNote — 앱을 짚은 결과를 완전성 노트 문장으로. 전부 잡았으면 빈 문자열. 앱은 연결마다
+// 짚으므로 연결 수로 센다.
+func attributionNote(conns int, unattributed map[string]int) string {
 	n := total(unattributed)
 	if n == 0 {
 		return ""
@@ -164,8 +137,8 @@ func attributionNote(edges int, unattributed map[string]int) string {
 		reasons = append(reasons, fmt.Sprintf("%s(%d)", r, c))
 	}
 	sort.Strings(reasons) // 순서가 흔들리면 같은 관측이 다른 스냅샷으로 보인다
-	return fmt.Sprintf("%[2]d of %[1]d edges could not be attributed to an app — **this does not mean there is no app**. Reasons: %[3]s",
-		edges, n, strings.Join(reasons, " · "))
+	return fmt.Sprintf("%[2]d of %[1]d observed connections could not be attributed to an app — **this does not mean there is no app**. Reasons: %[3]s",
+		conns, n, strings.Join(reasons, " · "))
 }
 
 func total(m map[string]int) int {
