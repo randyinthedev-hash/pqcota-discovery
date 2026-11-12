@@ -106,6 +106,17 @@ If the PID given by `--pid` is not among the running JVMs it **fails instead of 
 
 `--recon` is the basis on which an orchestrator decides whether to send the agent JAR to a node. With no JVM it emits `[]`.
 
+**One result per deployment.** JVMs that run the same application are grouped into one deployment, and the result is one asset per deployment, not per JVM. The deployment key is chosen in this order:
+- The systemd service: a system service by its unit name, a user service as `user@<uid>.service/<unit>`. So the same unit name under two users stays two deployments. A `.scope` is never used.
+- The absolute path of `-jar`: a relative path is resolved against the process's working directory. When that cannot be read, only the file name is kept and marked as a weak key.
+- The module of `-m`, the main class with its class path, the source file, and finally `JAVA_HOME`.
+
+The result says which of these was used (`pqcota:jca.app_key_kind`). The process ID is never part of the key.
+
+Inside a deployment, the JVMs are counted as **variants**: JVMs with the same `JAVA_HOME`, the same `-Djava.security.properties` setting and the same observed provider chain form one variant, and its `count` is **the number of JVMs in that variant**. The deployment's JVMs are the sum of the variants' counts. Nothing is dropped: two JVMs of one deployment with different chains stay two variants, and a JVM whose chain could not be read stays as a variant without a chain. If no JVM of a deployment could be read, the deployment is reported as a gap, as before.
+
+**With `--pid`, the result covers only the selected JVM.** It is marked with `pqcota:jca.observation_scope: selected-pid`, and the other JVMs found in the same deployment are kept as variants without a chain. So a service with two JVMs observed through `--pid` shows two JVMs, one observed and one not, and provisioning does not record its before state from that result.
+
 Attach can be blocked (`DisableAttachMechanism`, JEP 451, permissions). Then it does not end in failure but degrades to reading the static chain, and **dynamic registration stays a blind spot and is reported as a gap** — the order it degrades in is in the jvm collector.
 
 ### `pqcota-netcap`
