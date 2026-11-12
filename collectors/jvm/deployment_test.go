@@ -4,15 +4,15 @@
 package jvm_test
 
 import (
+	"encoding/json"
 	"errors"
 	"math/rand"
 	"regexp"
 	"strings"
 	"testing"
 
-	commonv1 "github.com/randyinthedev-hash/pqcota-common/gen/pqcota/common/v1"
+	discoveryv1 "github.com/randyinthedev-hash/pqcota-common/gen/pqcota/discovery/v1"
 	"github.com/randyinthedev-hash/pqcota-discovery/collectors/jvm"
-	"github.com/randyinthedev-hash/pqcota-inventory/pkg/inventory/normalize"
 )
 
 // JCA 식별 1단계(v0.12.0): 배포본 키와 설정 변형.
@@ -122,14 +122,50 @@ func collected(degraded bool, names ...string) *jvm.Collected {
 	return c
 }
 
+// 수집기 시험은 정규화를 부르지 않는다(collector 영역은 다른 단계 코드를 import하지 않는다, checkdeps R5).
+// 정규화까지 잇는 시험은 pqcota/test/crossstage에 있다.
+type propInstance struct {
+	VariantKey    string   `json:"variantKey"`
+	ChainObserved bool     `json:"chainObserved"`
+	ProviderSet   []string `json:"providerSet"`
+	ModeCounts    []struct {
+		Mode  string `json:"mode"`
+		Count uint32 `json:"count"`
+	} `json:"modeCounts"`
+	Count uint32 `json:"count"`
+}
+
+func propsOf(t *testing.T, r *discoveryv1.CollectionResult) (string, map[string]string) {
+	t.Helper()
+	var doc struct {
+		Components []struct {
+			Name       string                         `json:"name"`
+			Properties []struct{ Name, Value string } `json:"properties"`
+		} `json:"components"`
+	}
+	if err := json.Unmarshal(r.GetCbomCyclonedx(), &doc); err != nil || len(doc.Components) != 1 {
+		t.Fatalf("cbom: %v %s", err, r.GetCbomCyclonedx())
+	}
+	m := map[string]string{}
+	for _, p := range doc.Components[0].Properties {
+		m[p.Name] = p.Value
+	}
+	return doc.Components[0].Name, m
+}
+
+func instancesOf(t *testing.T, r *discoveryv1.CollectionResult) []propInstance {
+	t.Helper()
+	_, m := propsOf(t, r)
+	var out []propInstance
+	if err := json.Unmarshal([]byte(m["pqcota:jca.instances"]), &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
 func instanceKeys(t *testing.T, m jvm.Member) string {
 	t.Helper()
-	r := jvm.BuildDeploymentResult("n", jvm.Deployment{Key: "k", Kind: jvm.KindJarPath, Members: []jvm.Member{m}})
-	fs, err := normalize.DeriveFindings(r, "s", normalize.RulesetVersion)
-	if err != nil || len(fs) != 1 {
-		t.Fatalf("derive: %v %d", err, len(fs))
-	}
-	return fs[0].GetJca().GetInstances()[0].GetVariantKey()
+	return instancesOf(t, jvm.BuildDeploymentResult("n", jvm.Deployment{Key: "k", Kind: jvm.KindJarPath, Members: []jvm.Member{m}}))[0].VariantKey
 }
 
 // 변형 키: 세 입력을 구조로 직렬화한다. 덮어쓰기와 덧붙이기, 설정 없음과 빈 값이 모두 다르고, 구분자가 값 안에
@@ -179,45 +215,37 @@ func TestDeploymentWithStaticRuntimeAndUnobservedJVMs(t *testing.T) {
 	if !strings.Contains(string(r.GetCbomCyclonedx()), `"jca-provider-chain@/opt/pay/app.jar"`) {
 		t.Errorf("the component name does not carry the full key: %s", r.GetCbomCyclonedx())
 	}
-	fs, err := normalize.DeriveFindings(r, "s", normalize.RulesetVersion)
-	if err != nil || len(fs) != 1 {
-		t.Fatalf("derive: %v %d", err, len(fs))
+	_, props := propsOf(t, r)
+	if _, ok := props["pqcota:jca.provider_set"]; ok {
+		t.Errorf("provider_set is set although one JVM was not observed: %q", props["pqcota:jca.provider_set"])
 	}
-	jca := fs[0].GetJca()
-	if len(jca.GetProviderSet()) != 0 {
-		t.Errorf("provider_set = %v, want empty (one JVM was not observed)", jca.GetProviderSet())
+	if props["pqcota:jca.app_key_kind"] != jvm.KindJarPath {
+		t.Errorf("kind = %q", props["pqcota:jca.app_key_kind"])
 	}
-	if jca.GetAppKeyKind() != jvm.KindJarPath || len(jca.GetInstances()) != 2 {
-		t.Fatalf("kind %q, %d instances", jca.GetAppKeyKind(), len(jca.GetInstances()))
+	insts := instancesOf(t, r)
+	if len(insts) != 2 {
+		t.Fatalf("%d instances, want 2", len(insts))
 	}
 	var observed, unobserved int
-	for _, in := range jca.GetInstances() {
-		if in.GetChainObserved() {
+	for _, in := range insts {
+		modes := map[string]uint32{}
+		for _, mc := range in.ModeCounts {
+			modes[mc.Mode] = mc.Count
+		}
+		if in.ChainObserved {
 			observed++
-			modes := map[commonv1.JcaRegistrationMode]uint32{}
-			for _, mc := range in.GetModeCounts() {
-				modes[mc.GetMode()] = mc.GetCount()
-			}
-			if in.GetCount() != 2 || modes[commonv1.JcaRegistrationMode_JCA_REGISTRATION_MODE_STATIC] != 1 ||
-				modes[commonv1.JcaRegistrationMode_JCA_REGISTRATION_MODE_DYNAMIC] != 1 ||
-				in.GetRegistrationMode() != commonv1.JcaRegistrationMode_JCA_REGISTRATION_MODE_UNSPECIFIED {
-				t.Errorf("observed variant: count %d modes %v mode %v", in.GetCount(), modes, in.GetRegistrationMode())
-			}
-			if strings.Join(in.GetProviderSet(), ",") != "SUN,SunRsaSign,BC" {
-				t.Errorf("observed variant chain = %v", in.GetProviderSet())
+			if in.Count != 2 || modes["static"] != 1 || modes["dynamic"] != 1 || strings.Join(in.ProviderSet, ",") != "SUN,SunRsaSign,BC" {
+				t.Errorf("observed variant: count %d modes %v chain %v", in.Count, modes, in.ProviderSet)
 			}
 		} else {
 			unobserved++
-			if in.GetCount() != 1 || len(in.GetProviderSet()) != 0 || in.GetPqcReadiness() != "unknown" {
-				t.Errorf("unobserved variant: count %d chain %v readiness %q", in.GetCount(), in.GetProviderSet(), in.GetPqcReadiness())
+			if in.Count != 1 || len(in.ProviderSet) != 0 || modes[""] != 1 {
+				t.Errorf("unobserved variant: count %d chain %v modes %v", in.Count, in.ProviderSet, modes)
 			}
 		}
 	}
 	if observed != 1 || unobserved != 1 {
 		t.Errorf("observed %d unobserved %d, want 1 1", observed, unobserved)
-	}
-	if !strings.HasPrefix(fs[0].GetPqcReadiness(), "varies (") {
-		t.Errorf("readiness = %q, want varies", fs[0].GetPqcReadiness())
 	}
 
 	want := string(r.GetCbomCyclonedx()) + string(r.GetRawCapture()) + r.GetCompleteness().GetNote()
@@ -244,11 +272,38 @@ func TestDeploymentAllUnobservedIsAGap(t *testing.T) {
 // 프로브 경로는 실행 중 앱이 아니다. 배포본과 섞지 않는다.
 func TestLauncherDefaultIsNotADeployment(t *testing.T) {
 	r := jvm.BuildLauncherDefaultResult("n", "/opt/jdk", *collected(true, "SUN"))
-	fs, err := normalize.DeriveFindings(r, "s", normalize.RulesetVersion)
-	if err != nil || len(fs) != 1 {
-		t.Fatalf("derive: %v %d", err, len(fs))
+	name, props := propsOf(t, r)
+	if name != "jca-launcher-default@/opt/jdk" || props["pqcota:jca.app_key_kind"] != jvm.KindLauncherDefault {
+		t.Errorf("probe result: %s %v", name, props)
 	}
-	if !strings.Contains(string(r.GetCbomCyclonedx()), `"jca-launcher-default@/opt/jdk"`) || fs[0].GetJca().GetAppKeyKind() != jvm.KindLauncherDefault {
-		t.Errorf("probe result: %s", r.GetCbomCyclonedx())
+}
+
+// --pid로 하나만 관측했으면 관측 범위를 표시하고, 같은 배포본의 다른 JVM을 체인 없는 변형으로 남긴다.
+func TestSelectPIDKeepsTheOtherJVMs(t *testing.T) {
+	svc := "0::/system.slice/pay.service\n"
+	j1 := jvm.JVMProc{PID: 101, Cgroup: svc, Cmdline: cmd("-jar", "/opt/pay/app.jar")}
+	j2 := jvm.JVMProc{PID: 102, Cgroup: svc, Cmdline: cmd("-jar", "/opt/pay/app.jar")}
+	other := jvm.JVMProc{PID: 103, Cmdline: cmd("-jar", "/opt/other.jar")}
+	d := jvm.SelectPID(jvm.GroupDeployments([]jvm.Member{{JVM: j1, Collected: collected(false, "SUN", "BC")}})[0], []jvm.JVMProc{j1, j2, other}, 101)
+	r := jvm.BuildDeploymentResult("n", d)
+	_, props := propsOf(t, r)
+	if props["pqcota:jca.observation_scope"] != jvm.ScopeSelectedPID {
+		t.Errorf("scope = %q", props["pqcota:jca.observation_scope"])
+	}
+	if _, ok := props["pqcota:jca.provider_set"]; ok {
+		t.Error("provider_set is set although only the selected JVM was observed")
+	}
+	var total, unobserved uint32
+	for _, in := range instancesOf(t, r) {
+		total += in.Count
+		if !in.ChainObserved {
+			unobserved += in.Count
+		}
+	}
+	if total != 2 || unobserved != 1 {
+		t.Errorf("%d JVMs (%d unobserved), want 2 (1) — the other service's JVM must not be counted", total, unobserved)
+	}
+	if !strings.Contains(r.GetCompleteness().GetNote(), "--pid") {
+		t.Errorf("note = %q", r.GetCompleteness().GetNote())
 	}
 }

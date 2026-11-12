@@ -107,6 +107,7 @@ func main() {
 
 	// --pid: 그 JVM 하나만. 정찰에 없으면 알리지 않은 채 전부 훑지 않고 실패한다 — 사용자가 지목한
 	// 대상을 관측하지 못한 것은 갭이지 "전부 보기"로 갈아탈 이유가 아니다(§2.5).
+	found := jvms // --pid로 줄이기 전의 정찰 결과. 같은 배포본의 다른 JVM을 셀 때 쓴다
 	if *pidOnly > 0 {
 		var only []jvm.JVMProc
 		for _, j := range jvms {
@@ -125,7 +126,7 @@ func main() {
 	// 그 JVM의 provider 체인(동적 등록 포함)을 관측한다. 정찰→attach 대칭 완성.
 	// 없으면 프로브 경로(정적 등록 체인, 데모 경량)로 폴백한다.
 	if agent := os.Getenv("PQCOTA_JVM_AGENT"); agent != "" && len(jvms) > 0 {
-		res, observed := attachAll(node, jvms, agent)
+		res, observed := attachAll(node, jvms, agent, found, *pidOnly)
 		// **관측한 수를 적는다.** 찾은 수를 적으면 갭이 관측으로 세어진다 — 실측에서
 		// "2 JVMs observed" 아래에 행이 하나만 있었다.
 		head := fmt.Sprintf("%d JVMs observed", observed)
@@ -147,7 +148,7 @@ func main() {
 		}
 		fmt.Fprintf(os.Stderr, "[jvmscan] static fallback pid=%d: %d providers (dynamic registrations are a blind spot — not observed)\n",
 			j.PID, len(c.Providers))
-		d := jvm.GroupDeployments([]jvm.Member{{JVM: j, Collected: &c}})[0]
+		d := jvm.SelectPID(jvm.GroupDeployments([]jvm.Member{{JVM: j, Collected: &c}})[0], found, j.PID)
 		emit(*out, node, []*discoveryv1.CollectionResult{jvm.BuildDeploymentResult(node, d)}, false,
 			fmt.Sprintf("1 JVM observed (pid %d, static path)", j.PID))
 		return
@@ -300,7 +301,8 @@ func nz(s string) string {
 
 // attachAll — 발견된 각 JVM에 attach(agent JAR)해 provider 체인을 관측하고 JVM별로 구별되는
 // CollectionResult를 모아 돌려준다. attach 실패는 갭으로 센다(표시 없이 0이 되지 않게 §2.5).
-func attachAll(node string, jvms []jvm.JVMProc, agent string) (res []*discoveryv1.CollectionResult, observed int) {
+// found·pid: --pid로 하나만 골랐으면(pid>0) 정찰 결과 전부와 그 PID. 같은 배포본의 다른 JVM을 체인 없는 변형으로 남긴다.
+func attachAll(node string, jvms []jvm.JVMProc, agent string, found []jvm.JVMProc, pid int) (res []*discoveryv1.CollectionResult, observed int) {
 	// attach 경로는 3계층이다(collector 배포 설계 §2) — 앞이 막히면 뒤로, 다 막히면 정직히 갭.
 	//   ① Go 네이티브: JDK 없이 HotSpot 프로토콜로 직접. JRE·jlink·최소 컨테이너까지 커버.
 	//   ② JDK 클라이언트: 벤더 무관(OpenJ9 등 HotSpot 아닌 JVM). 머신에 JDK가 있어야.
@@ -351,6 +353,9 @@ func attachAll(node string, jvms []jvm.JVMProc, agent string) (res []*discoveryv
 	deps := jvm.GroupDeployments(members)
 	out := make([]*discoveryv1.CollectionResult, 0, len(deps))
 	for _, d := range deps {
+		if pid > 0 {
+			d = jvm.SelectPID(d, found, pid)
+		}
 		fmt.Fprintf(os.Stderr, "[jvmscan] deployment %s (%s): %d JVM(s)\n", d.Key, d.Kind, len(d.Members))
 		out = append(out, jvm.BuildDeploymentResult(node, d))
 	}

@@ -226,6 +226,34 @@ func modeOf(m Member) string {
 type Deployment struct {
 	Key, Kind string
 	Members   []Member
+	// Scope — 관측 범위(계약의 JcaAxes.observation_scope). 비면 찾은 JVM 전부, ScopeSelectedPID면 지정한 JVM만.
+	Scope string
+}
+
+// ScopeSelectedPID — 수집기가 지정한 JVM만 관측했다(pqcota-jvmscan --pid).
+const ScopeSelectedPID = "selected-pid"
+
+// errNotSelected — 같은 배포본에서 찾았지만 --pid로 고르지 않아 관측하지 않은 JVM.
+type errNotSelected struct{ pid int }
+
+func (e errNotSelected) Error() string {
+	return fmt.Sprintf("found in this deployment but not observed: only pid %d was selected (--pid)", e.pid)
+}
+
+// SelectPID — 지정한 PID 하나만 관측했을 때의 배포본. 정찰로 찾은 같은 배포본의 다른 JVM을 **체인 없는 변형으로**
+// 남기고 관측 범위를 표시한다. 그러지 않으면 여러 JVM이 도는 서비스가 count=1로 보이고, 그 한 JVM의 체인이 배포본
+// 전체의 before처럼 기록될 수 있다.
+func SelectPID(d Deployment, found []JVMProc, pid int) Deployment {
+	d.Scope = ScopeSelectedPID
+	for _, j := range found {
+		if j.PID == pid {
+			continue
+		}
+		if k, kd := DeploymentKey(j); k == d.Key && kd == d.Kind {
+			d.Members = append(d.Members, Member{JVM: j, Err: errNotSelected{pid}})
+		}
+	}
+	return d
 }
 
 // GroupDeployments — 멤버를 (종류, 키)로 묶는다. 결과는 (종류, 키) 순이다. 입력 순서와 무관하다.
@@ -448,7 +476,7 @@ func buildDeployment(node string, d Deployment, prefix string) *discoveryv1.Coll
 		missing = []commonv1.CollectionLayer{commonv1.CollectionLayer_COLLECTION_LAYER_JVM_INTROSPECTION}
 	}
 	var note string
-	if static > 0 || unobserved > 0 || len(d.Members) > 1 {
+	if static > 0 || unobserved > 0 || len(d.Members) > 1 || d.Scope != "" {
 		note = fmt.Sprintf("%s: %d JVM(s) — attached %d, static java.security path %d, not observed %d", d.Key, len(d.Members), attached, static, unobserved)
 		if static > 0 {
 			if ns := dedup(notes); len(ns) > 0 {
@@ -456,6 +484,9 @@ func buildDeployment(node string, d Deployment, prefix string) *discoveryv1.Coll
 			} else {
 				note += " (static: attach unavailable — dynamic registrations are a blind spot)"
 			}
+		}
+		if d.Scope == ScopeSelectedPID {
+			note += " (only the JVM selected with --pid was observed)"
 		}
 		if unobserved > 0 && len(reasons) > 0 {
 			sort.Strings(reasons)
@@ -468,6 +499,9 @@ func buildDeployment(node string, d Deployment, prefix string) *discoveryv1.Coll
 		{"pqcota:detection_method", dmStr},
 		{"pqcota:jca.app_key_kind", d.Kind},
 		{"pqcota:jca.instances", mustJSON(insts)},
+	}
+	if d.Scope != "" {
+		props = append(props, prop{"pqcota:jca.observation_scope", d.Scope})
 	}
 	if providerSet != "" {
 		props = append(props, prop{"pqcota:jca.provider_set", providerSet})
