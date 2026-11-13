@@ -9,7 +9,7 @@
 // 완전성 갭(DegradedResult)을 낸다. 갭을 중앙까지 보내야 인벤토리가 "관측하지 못했다"와 "링크가 없다"를
 // 구분한다(§2.6). 종료코드는 0이라 fleet 실행(Ansible)이 그 갭을 회수한다 — --strict면 1.
 // usage: pqcota-netcap [--strict] <node-id> [iface] [window-seconds]
-// env: NETCAP_IFACE, NETCAP_WINDOW_SEC
+// env: NETCAP_IFACE, NETCAP_WINDOW_SEC, PQCOTA_SIGN_KEY(선택, base64 ed25519 개인키 → 결과에 서명)
 package main
 
 import (
@@ -26,6 +26,7 @@ import (
 	commonv1 "github.com/randyinthedev-hash/pqcota-common/gen/pqcota/common/v1"
 	discoveryv1 "github.com/randyinthedev-hash/pqcota-common/gen/pqcota/discovery/v1"
 	"github.com/randyinthedev-hash/pqcota-common/pkg/kernel/machineid"
+	"github.com/randyinthedev-hash/pqcota-common/pkg/kernel/sign"
 	"github.com/randyinthedev-hash/pqcota-discovery/cmd/internal/nodeid"
 	"github.com/randyinthedev-hash/pqcota-discovery/collectors/network"
 	"github.com/randyinthedev-hash/pqcota-discovery/pkg/discovery/procs"
@@ -154,6 +155,14 @@ var machine *commonv1.MachineIdentity
 
 func emit(res *discoveryv1.CollectionResult) {
 	nodeid.Stamp([]*discoveryv1.CollectionResult{res}, machine) // 적재 때 node_id 중복·충돌을 이것으로 잡는다(§1.4)
+	// 서명은 지문을 붙인 뒤에 한다(서명 대상에 지문이 들어 있다). 갭만 담은 결과도 서명한다 — ID 결합 모드의
+	// 적재기는 서명 없는 결과를 받지 않으므로, 서명하지 않으면 「관측하지 못했다」가 중앙에 닿지 않는다.
+	if key := os.Getenv("PQCOTA_SIGN_KEY"); key != "" {
+		if err := sign.SignAll(key, []*discoveryv1.CollectionResult{res}); err != nil {
+			fmt.Fprintln(os.Stderr, "[netcap] PQCOTA_SIGN_KEY cannot sign:", err, "— not emitting an unsigned result")
+			os.Exit(1)
+		}
+	}
 	b, err := protojson.MarshalOptions{Multiline: true, Indent: "  "}.Marshal(res)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "marshal:", err)

@@ -19,7 +19,8 @@
 //	--pid N             그 PID의 JVM 하나만 관측(기본: 정찰로 찾은 전부)
 //	--recon             정찰만 → 발견 JVM JSON(배포 결정용, 관측 안 함)
 //
-// env: JAVA_BIN(미지정 시 정찰로 발견한 java, 없으면 PATH의 java), JVMSCAN_CP(bcprov 등 classpath)
+// env: JAVA_BIN(미지정 시 정찰로 발견한 java, 없으면 PATH의 java), JVMSCAN_CP(bcprov 등 classpath),
+// PQCOTA_SIGN_KEY(선택, base64 ed25519 개인키 → --output json의 결과마다 서명)
 package main
 
 import (
@@ -34,6 +35,7 @@ import (
 	commonv1 "github.com/randyinthedev-hash/pqcota-common/gen/pqcota/common/v1"
 	discoveryv1 "github.com/randyinthedev-hash/pqcota-common/gen/pqcota/discovery/v1"
 	"github.com/randyinthedev-hash/pqcota-common/pkg/kernel/machineid"
+	"github.com/randyinthedev-hash/pqcota-common/pkg/kernel/sign"
 	"github.com/randyinthedev-hash/pqcota-discovery/cmd/internal/localview"
 	"github.com/randyinthedev-hash/pqcota-discovery/cmd/internal/nodeid"
 	"github.com/randyinthedev-hash/pqcota-discovery/collectors/jvm"
@@ -211,6 +213,13 @@ var machine *commonv1.MachineIdentity
 func emit(mode, node string, results []*discoveryv1.CollectionResult, jsonl bool, headline string) {
 	nodeid.Stamp(results, machine) // 상관 지문 부착(§1.4 — 적재 때 node_id 중복·충돌을 이것으로 잡는다)
 	if mode == "json" {
+		// 배포본마다 결과가 하나씩이라 결과마다 서명한다. 지문을 붙인 뒤에 한다(서명 대상에 들어 있다).
+		if key := os.Getenv("PQCOTA_SIGN_KEY"); key != "" {
+			if err := sign.SignAll(key, results); err != nil {
+				fmt.Fprintln(os.Stderr, "[jvmscan] PQCOTA_SIGN_KEY cannot sign:", err, "— not emitting unsigned results")
+				os.Exit(1)
+			}
+		}
 		if err := jvm.EncodeResults(os.Stdout, results, jsonl); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 		}

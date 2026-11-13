@@ -179,11 +179,11 @@ What you need when running on a node. Insufficient privilege means **the visible
 | Command | Privilege | Environment variables |
 |---|---|---|
 | `pqcota-nodescan` | its own process works as-is. **Seeing other users' requires root** (or `CAP_SYS_PTRACE`) | `PQCOTA_SIGN_KEY` — if set, results are signed (optional) |
-| `pqcota-netcap` | **`CAP_NET_RAW` required** (`setcap` or root) — without it capture never starts | `NETCAP_IFACE` (default `eth0`) · `NETCAP_WINDOW_SEC` (default 8s) |
-| `pqcota-jvmscan` | **the same UID** as the target JVM (or root). If the target blocks attach it degrades to reading the target's `java.security` | `PQCOTA_JVM_AGENT`=path to collector.jar — given, it takes the attach path. **Without it and without `--pid`**, it starts a launcher of its own, even if JVMs are running, to see the launcher's default provider chain, recorded as **degraded** (not an observation of a running app) |
+| `pqcota-netcap` | **`CAP_NET_RAW` required** (`setcap` or root) — without it capture never starts | `NETCAP_IFACE` (default `eth0`) · `NETCAP_WINDOW_SEC` (default 8s) · `PQCOTA_SIGN_KEY` — if set, results are signed (optional) |
+| `pqcota-jvmscan` | **the same UID** as the target JVM (or root). If the target blocks attach it degrades to reading the target's `java.security` | `PQCOTA_JVM_AGENT`=path to collector.jar — given, it takes the attach path. **Without it and without `--pid`**, it starts a launcher of its own, even if JVMs are running, to see the launcher's default provider chain, recorded as **degraded** (not an observation of a running app) · `PQCOTA_SIGN_KEY` — if set, each result is signed (optional, `--output json`) |
 | `pqcota-cngscan` | no special privilege — the `bcrypt.dll` enumeration APIs are read-only queries | `PQCOTA_SIGN_KEY` — if set, results are signed (optional) |
 
-The key pair for `PQCOTA_SIGN_KEY` (and the matching `PQCOTA_VERIFY_KEY` at the centre) comes from [`pqcota-keygen`](https://github.com/randyinthedev-hash/pqcota-common/blob/main/cmd/README.md#pqcota-keygen), which lives in `pqcota-common` because plan approval uses the same kind of key.
+The key pair for `PQCOTA_SIGN_KEY` (and the matching `PQCOTA_VERIFY_KEY` at the centre) comes from [`pqcota-keygen`](https://github.com/randyinthedev-hash/pqcota-common/blob/main/cmd/README.md#pqcota-keygen), which lives in `pqcota-common` because plan approval uses the same kind of key. If the centre binds keys to collector IDs, it needs a signature from every collector, and each collector's key has to be listed under its ID (`openssl-collector`, `network-collector`, `jvm-collector`, `cng-collector`) — [Binding keys to collector IDs](https://github.com/randyinthedev-hash/pqcota/blob/main/docs/environment-variables.md#binding-keys-to-collector-ids). A key that is set but cannot sign stops the collector instead of letting it emit an unsigned result.
 
 
 ### Runtime requirements — kernel and privileges

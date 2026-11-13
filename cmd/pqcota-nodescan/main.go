@@ -57,11 +57,11 @@ func main() {
 	res.GetEnvelope().Machine = fp // 상관 지문 부착(§1.4 — IP·수동입력에 흔들리지 않게)
 
 	// 리포트 서명(§2.6) — 키가 있으면. 전송 보안 없는 경로의 신뢰 앵커.
+	// 키를 줬는데 서명하지 못하면 멈춘다. 서명 없이 내보내면 ID 결합 모드의 적재기가 이유를 모른 채 거부한다.
 	if key := os.Getenv("PQCOTA_SIGN_KEY"); key != "" {
-		if sig, err := sign.Sign(key, res); err == nil {
-			res.GetEnvelope().Signature = sig
-		} else {
-			fmt.Fprintln(os.Stderr, "[nodescan] signing failed:", err)
+		if err := sign.SignAll(key, []*discoveryv1.CollectionResult{res}); err != nil {
+			fmt.Fprintln(os.Stderr, "[nodescan] PQCOTA_SIGN_KEY cannot sign:", err, "— not emitting an unsigned result")
+			os.Exit(1)
 		}
 	}
 

@@ -53,10 +53,9 @@ func main() {
 	}
 
 	if key := os.Getenv("PQCOTA_SIGN_KEY"); key != "" {
-		if sig, sErr := sign.Sign(key, res); sErr == nil {
-			res.GetEnvelope().Signature = sig
-		} else {
-			fmt.Fprintln(os.Stderr, "[cngscan] signing failed:", sErr)
+		if sErr := sign.SignAll(key, []*discoveryv1.CollectionResult{res}); sErr != nil {
+			fmt.Fprintln(os.Stderr, "[cngscan] PQCOTA_SIGN_KEY cannot sign:", sErr, "— not emitting an unsigned result")
+			os.Exit(1)
 		}
 	}
 

@@ -179,11 +179,11 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o dist/windows-amd64/ ./cmd/pq
 | 명령 | 권한 | 환경변수 |
 |---|---|---|
 | `pqcota-nodescan` | 자기 프로세스는 그대로 동작합니다. **다른 사용자의 프로세스를 보려면 root**(또는 `CAP_SYS_PTRACE`)가 필요합니다 | `PQCOTA_SIGN_KEY`: 설정하면 결과에 서명합니다(선택) |
-| `pqcota-netcap` | **`CAP_NET_RAW` 필수**(`setcap` 또는 root). 없으면 캡처가 시작되지 않습니다 | `NETCAP_IFACE`(기본값 `eth0`) · `NETCAP_WINDOW_SEC`(기본값 8초) |
-| `pqcota-jvmscan` | 대상 JVM과 **같은 UID**(또는 root). 대상이 attach를 막으면 대상의 `java.security`를 읽는 쪽으로 내려갑니다 | `PQCOTA_JVM_AGENT`=collector.jar의 경로: 주면 attach 경로를 택합니다. **에이전트도 `--pid`도 없으면** JVM이 돌고 있어도 런처를 하나 시작해 그 기본 provider 체인을 보고, **관측 범위가 제한된 대체 결과(degraded)**로 기록합니다(실행 중인 애플리케이션의 관측이 아닙니다) |
+| `pqcota-netcap` | **`CAP_NET_RAW` 필수**(`setcap` 또는 root). 없으면 캡처가 시작되지 않습니다 | `NETCAP_IFACE`(기본값 `eth0`) · `NETCAP_WINDOW_SEC`(기본값 8초) · `PQCOTA_SIGN_KEY`: 설정하면 결과에 서명합니다(선택) |
+| `pqcota-jvmscan` | 대상 JVM과 **같은 UID**(또는 root). 대상이 attach를 막으면 대상의 `java.security`를 읽는 쪽으로 내려갑니다 | `PQCOTA_JVM_AGENT`=collector.jar의 경로: 주면 attach 경로를 택합니다. **에이전트도 `--pid`도 없으면** JVM이 돌고 있어도 런처를 하나 시작해 그 기본 provider 체인을 보고, **관측 범위가 제한된 대체 결과(degraded)**로 기록합니다(실행 중인 애플리케이션의 관측이 아닙니다) · `PQCOTA_SIGN_KEY`: 설정하면 결과마다 서명합니다(선택, `--output json`) |
 | `pqcota-cngscan` | 특별한 권한 없음: `bcrypt.dll` 열거 API는 읽기 전용 조회입니다 | `PQCOTA_SIGN_KEY`: 설정하면 결과에 서명합니다(선택) |
 
-`PQCOTA_SIGN_KEY`의 키 쌍(그리고 중앙의 짝인 `PQCOTA_VERIFY_KEY`)은 [`pqcota-keygen`](https://github.com/randyinthedev-hash/pqcota-common/blob/main/cmd/README.ko.md#pqcota-keygen)으로 만듭니다. 이 명령은 계획 승인이 같은 종류의 키를 쓰므로 `pqcota-common`에 있습니다.
+`PQCOTA_SIGN_KEY`의 키 쌍(그리고 중앙의 짝인 `PQCOTA_VERIFY_KEY`)은 [`pqcota-keygen`](https://github.com/randyinthedev-hash/pqcota-common/blob/main/cmd/README.ko.md#pqcota-keygen)으로 만듭니다. 이 명령은 계획 승인이 같은 종류의 키를 쓰므로 `pqcota-common`에 있습니다. 중앙이 키를 수집기 ID에 묶으면 모든 수집기의 서명이 필요하고, 수집기마다 그 키가 자기 ID(`openssl-collector`, `network-collector`, `jvm-collector`, `cng-collector`) 아래 등록돼 있어야 합니다. [키를 수집기 ID에 묶기](https://github.com/randyinthedev-hash/pqcota/blob/main/docs/environment-variables.ko.md#키를-수집기-id에-묶기). 키를 설정했는데 서명할 수 없으면 서명 없는 결과를 내지 않고 수집기가 멈춥니다.
 
 
 ### 실행 요건: 커널과 권한
