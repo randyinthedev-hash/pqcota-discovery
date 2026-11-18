@@ -145,3 +145,29 @@ func TestSameAppOnBothSocketsIsNotAmbiguous(t *testing.T) {
 		t.Fatalf("one app opened two connections and it still failed to attribute: key=%q reason=%q", got.Key, got.Reason)
 	}
 }
+
+// ListeningOn — 로컬 포트에 LISTEN(0A) 소켓이 있으면 true. 같은 포트의 수립된 연결(01)이나 다른 포트의 LISTEN은 아니다.
+// 두 파일 다 못 읽으면 오류(역할 「확인하지 못함」으로 이어진다).
+func TestListeningOn(t *testing.T) {
+	// 0.0.0.0:22 LISTEN, 10.0.0.2:22 ↔ 10.0.0.1:50000 ESTABLISHED, 127.0.0.1:2222 ESTABLISHED만.
+	f := newFakeProc(t,
+		"   0: 00000000:0016 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 1001 1 0000000000000000 100 0 0 10 0",
+		"   1: 0200000A:0016 0100000A:C350 01 00000000:00000000 00:00000000 00000000     0        0 1002 1 0000000000000000 20 0 0 10 0",
+		"   2: 0100007F:08AE 0100007F:9C40 01 00000000:00000000 00:00000000 00000000  1000        0 1003 1 0000000000000000 20 0 0 10 0",
+	)
+	for port, want := range map[uint32]bool{22: true, 2222: false, 50000: false} {
+		got, err := procs.ListeningOn(f.root, port)
+		if err != nil || got != want {
+			t.Errorf("port %d: %v %v, want %v", port, got, err, want)
+		}
+	}
+	// tcp6의 LISTEN(:::443)도 본다.
+	write(t, filepath.Join(f.root, "net/tcp6"), "  sl  local_address remote_address st\n"+
+		"   0: 00000000000000000000000000000000:01BB 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 2001 1 0000000000000000 100 0 0 10 0\n")
+	if got, err := procs.ListeningOn(f.root, 443); err != nil || !got {
+		t.Errorf("tcp6 listen: %v %v", got, err)
+	}
+	if _, err := procs.ListeningOn(filepath.Join(t.TempDir(), "none"), 22); err == nil {
+		t.Error("no /proc should be an error, not 'not listening'")
+	}
+}

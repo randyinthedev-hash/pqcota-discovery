@@ -28,7 +28,7 @@ type attributeFunc func(localIP string, localPort uint32, remoteIP string, remot
 //     실리므로 그룹이 있는 관측의 값을 쓴다.
 //  2. **연결마다 앱을 짚는다.** 두 끝점이 맞는 소켓 하나로 짚는다([procs.Attributor.Conn]). 못 짚으면
 //     앱 키를 비우고 사유를 센다. 같은 목적지의 다른 연결로 대신 짚지 않는다.
-//  3. **앱 키별로 묶는다.** 묶는 키는 (출발 노드, 목적지, 포트, 프로토콜, 앱 키, 종류)다. 출발 포트는
+//  3. **앱 키별로 묶는다.** 묶는 키는 (관측 노드, 상대, 포트, 프로토콜, 역할, 앱 키, 종류)다. 클라이언트의 출발 포트는
 //     넣지 않는다 — 같은 서비스가 다시 붙은 연결은 한 엣지로 모이고, 같은 목적지에 붙은 두 서비스는
 //     엣지 둘이 된다. 앱 키가 빈 연결끼리는 빈 키의 엣지 하나로 모인다.
 //
@@ -52,7 +52,8 @@ func aggregate(obs []network.Observation, self map[string]bool, attribute attrib
 			continue
 		}
 		e := network.BuildEdge(o.Conn, o.HS)
-		k := fmt.Sprintf("%s|%s|%d|%d|%s", e.GetSrcNodeId(), e.GetDstAddr(), e.GetPort(), e.GetProtocol(), o.Conn.LocalAddr)
+		// 연결 하나 = 관측 노드·역할·프로토콜·두 끝점. 서버 기록은 dst_addr에 클라이언트 포트가 없으므로 원격 끝점까지 본다.
+		k := fmt.Sprintf("%s|%d|%d|%s|%s", e.GetSrcNodeId(), e.GetRole(), e.GetProtocol(), o.Conn.LocalAddr, o.Conn.RemoteAddr)
 		if c, ok := byConn[k]; ok {
 			fillGroup(c.edge, e)
 			continue
@@ -69,11 +70,11 @@ func aggregate(obs []network.Observation, self map[string]bool, attribute attrib
 		a := attributeConn(c.tuple, attribute)
 		if a.Key == "" {
 			out.unattributed[a.Reason]++
-			out.missed = append(out.missed, fmt.Sprintf("%s → %s: %s", c.tuple.LocalAddr, c.tuple.DstAddr, a.Reason))
+			out.missed = append(out.missed, fmt.Sprintf("%s ↔ %s: %s", c.tuple.LocalAddr, c.tuple.RemoteAddr, a.Reason))
 		}
 		e := c.edge
 		e.AppKey, e.AppKeyKind = a.Key, a.Kind
-		k := fmt.Sprintf("%s|%s|%d|%d|%s|%s", e.GetSrcNodeId(), e.GetDstAddr(), e.GetPort(), e.GetProtocol(), e.GetAppKey(), e.GetAppKeyKind())
+		k := fmt.Sprintf("%s|%s|%d|%d|%d|%s|%s", e.GetSrcNodeId(), e.GetDstAddr(), e.GetPort(), e.GetProtocol(), e.GetRole(), e.GetAppKey(), e.GetAppKeyKind())
 		if ex, ok := byKey[k]; ok {
 			ex.ObservedCount += e.GetObservedCount()
 			fillGroup(ex, e)
@@ -103,7 +104,7 @@ const reasonBadTuple = "the connection's endpoints could not be read — no sock
 // attributeConn — 연결의 두 끝점을 풀어 앱을 짚는다.
 func attributeConn(t network.ConnTuple, attribute attributeFunc) procs.Attribution {
 	lip, lport, ok1 := splitAddr(t.LocalAddr)
-	rip, rport, ok2 := splitAddr(t.DstAddr)
+	rip, rport, ok2 := splitAddr(t.RemoteAddr)
 	if !ok1 || !ok2 {
 		return procs.Attribution{Reason: reasonBadTuple}
 	}

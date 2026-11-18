@@ -23,14 +23,17 @@ const (
 
 // ConnTuple — 관측된 TCP 연결의 종단 정보(캡처 계층이 채운다). 등급·협상은 Handshake에.
 type ConnTuple struct {
-	SrcNode      string // 캡처 호스트 = 스코프 노드 ID(앵커, 알려짐)
-	DstNodeID    string // 코어가 스코프 마스터로 이어 붙였으면 채워짐. 보통 "" (코어가 사후에 잇는다)
-	DstAddr      string // 원시 상대 주소 "ip:port" — off-scope 판정 근거(§1.4, IC-E3)
-	Port         uint32
-	SrcInitiated bool // src가 TCP 연결 개시자면 src=client (역할 방향의 근거)
-	// LocalAddr — 이 연결의 로컬(클라이언트) 쪽 "ip:port". **소켓을 찾는 데만 쓴다**(앱 귀속). 엣지에는
-	// 싣지 않는다 — 출발 포트가 엣지에 들어가면 같은 앱이 다시 붙을 때마다 엣지가 새로 생긴다.
-	LocalAddr string
+	SrcNode   string // 캡처 호스트 = 스코프 노드 ID(앵커, 알려짐)
+	DstNodeID string // 코어가 스코프 마스터로 이어 붙였으면 채워짐. 보통 "" (코어가 사후에 잇는다)
+	DstAddr   string // 원시 상대 주소 "ip:port" — off-scope 판정 근거(§1.4, IC-E3)
+	Port      uint32
+	// Role — 이 연결에서 관측 노드(src)의 역할. [LocalRole]이 메시지 종류와 패킷 방향으로 정한다.
+	// UNSPECIFIED는 「확인하지 못함」이다(추정하지 않는다).
+	Role discoveryv1.EdgeRole
+	// LocalAddr·RemoteAddr — 이 연결의 로컬·원격 "ip:port". **소켓을 찾는 데만 쓴다**(앱 귀속). 엣지에는
+	// 싣지 않는다 — 클라이언트의 출발 포트가 엣지에 들어가면 같은 앱이 다시 붙을 때마다 엣지가 새로 생긴다.
+	LocalAddr  string
+	RemoteAddr string
 }
 
 // BuildEdge — 파싱된 핸드셰이크 + 연결 튜플 → 관측 통신 엣지(ObservedEdge). TD-NETWORK-4.
@@ -42,7 +45,7 @@ func BuildEdge(conn ConnTuple, hs *Handshake) *discoveryv1.ObservedEdge {
 		DstAddr:         conn.DstAddr,
 		Port:            conn.Port,
 		Protocol:        networkProtocol(hs.Protocol),
-		Role:            edgeRole(hs, conn.SrcInitiated),
+		Role:            conn.Role,
 		NegotiatedGroup: hs.NegotiatedGroup,
 		Cipher:          hs.Cipher,
 		// 수동 관측이지만 실제 협상을 직접 봤으므로 confirmed로 파생되는 방법을 쓴다(§2.3).
@@ -121,19 +124,4 @@ func networkProtocol(p string) discoveryv1.NetworkProtocol {
 	default:
 		return discoveryv1.NetworkProtocol_NETWORK_PROTOCOL_UNSPECIFIED
 	}
-}
-
-// edgeRole — 역할 방향. TLS는 핸드셰이크 메시지가 확정(ClientHello/ServerHello),
-// SSH 등 미상이면 TCP 개시자로 추정.
-func edgeRole(hs *Handshake, srcInitiated bool) discoveryv1.EdgeRole {
-	switch hs.Role {
-	case "client":
-		return discoveryv1.EdgeRole_EDGE_ROLE_CLIENT
-	case "server":
-		return discoveryv1.EdgeRole_EDGE_ROLE_SERVER
-	}
-	if srcInitiated {
-		return discoveryv1.EdgeRole_EDGE_ROLE_CLIENT
-	}
-	return discoveryv1.EdgeRole_EDGE_ROLE_UNSPECIFIED
 }

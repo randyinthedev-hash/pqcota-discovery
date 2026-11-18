@@ -201,7 +201,8 @@ func TestNegotiateSSHKex(t *testing.T) {
 // ── TD-NETWORK-4: 파싱 → ObservedEdge 빌드 ──
 func TestBuildEdge(t *testing.T) {
 	hs, _ := network.ParseTLSHandshake(serverHelloX25519MLKEM())
-	conn := network.ConnTuple{SrcNode: "web-01", DstAddr: "10.0.1.20:8443", Port: 8443}
+	// 클라이언트 노드가 ServerHello를 받은 경우. 역할은 메시지(ServerHello)가 아니라 튜플의 역할(관측 노드가 클라이언트)이다.
+	conn := network.ConnTuple{SrcNode: "web-01", DstAddr: "10.0.1.20:8443", Port: 8443, Role: discoveryv1.EdgeRole_EDGE_ROLE_CLIENT}
 	e := network.BuildEdge(conn, hs)
 	if e.GetSrcNodeId() != "web-01" || e.GetPort() != 8443 {
 		t.Errorf("tuple mapping failed: %+v", e)
@@ -209,8 +210,8 @@ func TestBuildEdge(t *testing.T) {
 	if e.GetProtocol() != discoveryv1.NetworkProtocol_NETWORK_PROTOCOL_TLS {
 		t.Errorf("protocol = %v", e.GetProtocol())
 	}
-	if e.GetRole() != discoveryv1.EdgeRole_EDGE_ROLE_SERVER {
-		t.Errorf("role = %v, want SERVER(ServerHello)", e.GetRole())
+	if e.GetRole() != discoveryv1.EdgeRole_EDGE_ROLE_CLIENT {
+		t.Errorf("role = %v, want CLIENT (the observing node's role; v0.17.0 took SERVER from the ServerHello)", e.GetRole())
 	}
 	if e.GetNegotiatedGroup() != "X25519MLKEM768" {
 		t.Errorf("negotiated_group = %q", e.GetNegotiatedGroup())

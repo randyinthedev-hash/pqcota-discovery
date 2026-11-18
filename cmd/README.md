@@ -132,6 +132,18 @@ pqcota-netcap [--strict] <node-id> [iface] [window-seconds]
 | `[window-seconds]` | `8` (env `NETCAP_WINDOW_SEC`) | the length of the observation window |
 | `--strict` | off | fail with exit code 1 when observation is impossible |
 
+**Both ends of a connection are observed** (from v0.18.0). A node records the connections it opened and the ones it accepted; each record's `src_node_id` is the observing node and `role` is that node's role.
+
+| Role | `dst_addr` | `port` | `app_key` |
+|---|---|---|---|
+| `CLIENT` (this node opened it) | the server's `ip:port` | the server port | the process that opened it |
+| `SERVER` (this node accepted it) | the client's IP, without its port | the port this node accepted on | the process that accepted it |
+| `UNSPECIFIED` (role not confirmed) | the peer's IP, without a port | `0` | as above, from the socket |
+
+- The role comes from the handshake and its direction. For TLS, whoever sends the ClientHello is the client and whoever sends the ServerHello is the server, so either message is enough. For SSH both sides send the same message, so netcap checks whether the local port has a listening socket. If it cannot tell, the role stays `UNSPECIFIED`; it does not guess from which port number is lower.
+- The client's source port changes with every connection, so it is used only to find the socket and is not part of the record. A client that reconnects adds to the same record's `observed_count`.
+- When both nodes run netcap, the same connection is recorded once on each node. The records are not merged.
+
 **Without `CAP_NET_RAW` there is no observation.** In that case netcap reports the fact and how to grant it (`setcap cap_net_raw+ep`) on stderr, and emits on stdout a **gap record** with `layers_missing=[NETWORK]`. The default exit code is **0**.
 
 It is 0 because that gap has to reach the center. When Ansible drives many nodes, an exit code of 1 makes the task a failure, so the result file is not retrieved and **nothing at all** is recorded centrally for that node. Then the inventory view reads as "this node has no TLS links" — when in fact it simply was not observed. Carrying the gap through is what keeps "not observed" apart from "not there".

@@ -8,9 +8,9 @@ package network
 import (
 	"fmt"
 	"net"
-	"strconv"
 	"time"
 
+	discoveryv1 "github.com/randyinthedev-hash/pqcota-common/gen/pqcota/discovery/v1"
 	"golang.org/x/sys/unix"
 )
 
@@ -18,11 +18,13 @@ import (
 // 프레임을 읽어 통신 엣지 관측으로 바꾼다. 조립은 순수 부분(DissectTCPPayload·ParseHandshakePayload)의 합성.
 // 소켓을 못 열면(권한 등) ErrCaptureUnavailable로 감싸 반환 → 코어가 완전성 갭으로 강등(TD-NETWORK-13).
 type LiveSource struct {
-	Iface      string          // 캡처 인터페이스(예 "eth0"). ""=모든 인터페이스
-	Node       string          // 캡처 호스트 스코프 노드 ID(앵커)
-	SelfIPs    map[string]bool // 자기 IP — 방향 판정·자기참조(§2.6)
-	Window     time.Duration   // 관측 구간(0이면 3초)
-	MaxPackets int             // 상한(0=구간으로만 종료)
+	Iface   string          // 캡처 인터페이스(예 "eth0"). ""=모든 인터페이스
+	Node    string          // 캡처 호스트 스코프 노드 ID(앵커)
+	SelfIPs map[string]bool // 자기 IP — 패킷 방향(로컬이 보냈나)·자기참조(§2.6)
+	// Listening — 로컬 포트에 LISTEN 소켓이 있나(SSH 역할 판정). nil이거나 오류면 SSH 역할은 UNSPECIFIED다.
+	Listening  func(port uint16) (bool, error)
+	Window     time.Duration // 관측 구간(0이면 3초)
+	MaxPackets int           // 상한(0=구간으로만 종료)
 
 	// Truncated — 구간을 다 채우지 못하고 읽기 오류로 중단됐나. 중단을 알리지 않고 "관측 없음"으로
 	// 보고하면 **결함이 갭처럼 보인다**(§2.6) — 호출자가 완전성 노트에 반영하라고 남긴다.
@@ -82,9 +84,9 @@ func (s *LiveSource) Observe(_ []string, _ map[string]string) ([]Observation, er
 		if !ok {
 			continue
 		}
-		conn, emit := s.edgeFor(seg)
+		conn, emit := s.edgeFor(seg, hs)
 		if !emit {
-			continue // 서버측 관측 — 중복·방향 혼선 방지(클라이언트가 보고)
+			continue // 이 노드의 연결이 아니거나 자기 자신과의 연결
 		}
 		// SSH는 양쪽 KEXINIT을 다 봐야 협상 결과를 알 수 있다(RFC 4253) — 연결별로 모았다가 구간이
 		// 끝난 뒤 계산한다. TLS는 ServerHello에 확정 그룹이 있어 그대로 방출한다.
@@ -107,8 +109,9 @@ type sshPending struct {
 }
 
 type sshKexPair struct {
-	conn           ConnTuple
-	client, server []string
+	conn                        ConnTuple
+	client, server              []string
+	unknownLocal, unknownRemote []string // 역할 미확인 — 어느 쪽이 클라이언트인지 모른다
 }
 
 func newSSHPending() *sshPending { return &sshPending{byKey: map[string]*sshKexPair{}} }
@@ -116,17 +119,25 @@ func newSSHPending() *sshPending { return &sshPending{byKey: map[string]*sshKexP
 func (p *sshPending) add(conn ConnTuple, hs *Handshake, fromSelf bool) {
 	// 연결마다 따로 모은다(출발 포트까지). 같은 목적지의 SSH 연결이 여럿이면 KEXINIT이 섞이지 않고,
 	// 연결마다 앱을 짚을 수 있다.
-	key := fmt.Sprintf("%s|%s|%d|%s", conn.SrcNode, conn.DstAddr, conn.Port, conn.LocalAddr)
+	key := fmt.Sprintf("%s|%s|%s", conn.SrcNode, conn.LocalAddr, conn.RemoteAddr)
 	e, ok := p.byKey[key]
 	if !ok {
 		e = &sshKexPair{conn: conn}
 		p.byKey[key] = e
 		p.order = append(p.order, key)
 	}
-	// edgeFor가 로컬=클라이언트인 연결만 통과시키므로, 자기 IP에서 나간 KEXINIT이 클라이언트 것이다.
-	if fromSelf {
+	// 로컬이 보낸 KEXINIT은 로컬 역할의 것이다. 역할을 확인하지 못했으면 어느 쪽인지 모른다 — 협상을 정하지 않는다.
+	localIsClient := conn.Role == discoveryv1.EdgeRole_EDGE_ROLE_CLIENT
+	switch {
+	case conn.Role == discoveryv1.EdgeRole_EDGE_ROLE_UNSPECIFIED:
+		if fromSelf {
+			e.unknownLocal = hs.OfferedGroups
+		} else {
+			e.unknownRemote = hs.OfferedGroups
+		}
+	case fromSelf == localIsClient:
 		e.client = hs.OfferedGroups
-	} else {
+	default:
 		e.server = hs.OfferedGroups
 	}
 }
@@ -139,6 +150,12 @@ func (p *sshPending) resolve() []Observation {
 		if len(offered) == 0 {
 			offered = e.server // 클라이언트 KEXINIT을 놓쳤으면 본 것만 제안으로 남긴다
 		}
+		if e.conn.Role == discoveryv1.EdgeRole_EDGE_ROLE_UNSPECIFIED {
+			offered = e.unknownLocal
+			if len(offered) == 0 {
+				offered = e.unknownRemote
+			}
+		}
 		out = append(out, Observation{Conn: e.conn, HS: &Handshake{
 			Protocol:      "SSH",
 			Role:          "client",
@@ -150,22 +167,24 @@ func (p *sshPending) resolve() []Observation {
 	return out
 }
 
-// edgeFor — 세그먼트에서 client→server 방향 엣지를 만든다. 서버 = 낮은 포트 쪽.
-// 로컬이 클라이언트일 때만 방출(emit=true)한다 — 양쪽에서 잡히는 중복과 방향 혼선을 없앤다.
-// 서버측에서 본 핸드셰이크는 상대(클라이언트) 노드가 보고한다. IP→노드 잇기는 코어(§1.4).
-func (s *LiveSource) edgeFor(seg *Segment) (ConnTuple, bool) {
-	serverIP, serverPort, clientIP, clientPort := seg.SrcIP, seg.SrcPort, seg.DstIP, seg.DstPort
-	if seg.SrcPort > seg.DstPort { // 낮은 포트가 서버
-		serverIP, serverPort, clientIP, clientPort = seg.DstIP, seg.DstPort, seg.SrcIP, seg.SrcPort
+// edgeFor — 세그먼트를 이 노드의 연결로 본다. 로컬은 자기 IP 쪽이다. 로컬의 역할은 [LocalRole]이 메시지 종류와
+// 방향으로 정하고, 값은 [TupleFor]가 정한다. 로컬이 서버여도 방출한다(v0.18.0부터). 한쪽도 로컬이 아니거나
+// 양쪽 다 로컬(자기 자신과의 연결)이면 방출하지 않는다.
+//
+// v0.17.0까지는 낮은 포트 쪽을 서버로 보고, 로컬이 클라이언트일 때만 방출했다. 서버에서 받은 연결은 엣지가 없었다.
+func (s *LiveSource) edgeFor(seg *Segment, hs *Handshake) (ConnTuple, bool) {
+	srcSelf, dstSelf := s.SelfIPs[seg.SrcIP], s.SelfIPs[seg.DstIP]
+	if srcSelf == dstSelf {
+		return ConnTuple{}, false
 	}
-	if !s.SelfIPs[clientIP] {
-		return ConnTuple{}, false // 로컬은 서버(또는 무관) — 방출 안 함
+	localIP, localPort, remoteIP, remotePort := seg.SrcIP, seg.SrcPort, seg.DstIP, seg.DstPort
+	if dstSelf {
+		localIP, localPort, remoteIP, remotePort = seg.DstIP, seg.DstPort, seg.SrcIP, seg.SrcPort
 	}
-	return ConnTuple{
-		SrcNode:      s.Node,
-		DstAddr:      fmt.Sprintf("%s:%d", serverIP, serverPort),
-		Port:         uint32(serverPort),
-		SrcInitiated: true,
-		LocalAddr:    net.JoinHostPort(clientIP, strconv.Itoa(int(clientPort))),
-	}, true
+	var listening func() (bool, error)
+	if s.Listening != nil {
+		listening = func() (bool, error) { return s.Listening(localPort) }
+	}
+	role := LocalRole(hs, srcSelf, listening)
+	return TupleFor(s.Node, role, localIP, localPort, remoteIP, remotePort), true
 }

@@ -124,6 +124,11 @@ func scanOwners(procRoot string) (map[uint64][]int, bool) {
 		for _, fd := range fds {
 			tgt, err := os.Readlink(filepath.Join(fdDir, fd.Name()))
 			if err != nil {
+				// fd 목록은 읽혀도 링크는 권한이 모자라 못 읽을 수 있다(다른 사용자의 프로세스, CAP_SYS_PTRACE 없음 —
+				// 컨테이너 안의 root가 그렇다). 그것을 「소켓이 닫혔다」로 적으면 사유가 틀린다. 못 본 것으로 센다.
+				if os.IsPermission(err) {
+					denied = true
+				}
 				continue
 			}
 			rest, ok := strings.CutPrefix(tgt, "socket:[")
@@ -430,4 +435,40 @@ func (a *Attributor) rescan() (map[uint64][]int, bool) {
 	a.owners, a.denied = scanOwners(a.procRoot)
 	a.scanned = a.now()
 	return a.owners, a.denied
+}
+
+// ListeningOn — 로컬 포트에 LISTEN 소켓(`/proc/net/tcp`·`tcp6`의 상태 0A)이 있나. 주소는 보지 않는다(0.0.0.0·::·특정
+// 주소 어느 것이든 그 포트를 받으면 서버다). SSH 연결에서 로컬의 역할을 정하는 데 쓴다(network.LocalRole).
+// 두 파일을 모두 읽지 못하면 오류다 — 그때 역할은 「확인하지 못함」이고, 포트 크기로 추정하지 않는다.
+func ListeningOn(procRoot string, port uint32) (bool, error) {
+	want := fmt.Sprintf(":%04X", port)
+	readAny := false
+	for _, name := range []string{"net/tcp", "net/tcp6"} {
+		fh, err := os.Open(filepath.Join(procRoot, name))
+		if err != nil {
+			continue
+		}
+		readAny = true
+		sc := bufio.NewScanner(fh)
+		sc.Scan() // 헤더
+		for sc.Scan() {
+			f := strings.Fields(sc.Text())
+			if len(f) < 4 {
+				continue
+			}
+			if f[3] == "0A" && strings.HasSuffix(strings.ToUpper(f[1]), want) {
+				fh.Close()
+				return true, nil
+			}
+		}
+		err = sc.Err()
+		fh.Close()
+		if err != nil {
+			return false, err
+		}
+	}
+	if !readAny {
+		return false, fmt.Errorf("neither %s/net/tcp nor net/tcp6 could be read", procRoot)
+	}
+	return false, nil
 }

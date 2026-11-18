@@ -61,6 +61,8 @@ func main() {
 		Node:    node,
 		SelfIPs: localIPs(),
 		Window:  time.Duration(windowSec) * time.Second,
+		// SSH 역할 판정: 로컬 포트에 LISTEN 소켓이 있으면 서버. 읽지 못하면 역할은 「확인하지 못함」으로 남는다.
+		Listening: func(port uint16) (bool, error) { return procs.ListeningOn("/proc", uint32(port)) },
 	}
 	fmt.Fprintf(os.Stderr, "[netcap] %s iface=%s window=%ds — starting observation…\n", node, iface, windowSec)
 
