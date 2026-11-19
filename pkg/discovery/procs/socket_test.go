@@ -170,19 +170,22 @@ func TestListeningOn(t *testing.T) {
 		t.Error("IPv6 local without net/tcp6 should be an error")
 	}
 
-	// tcp6: [fd00::1]:8443, [::]:443, [::ffff:10.0.0.2]:993 LISTEN.
+	// tcp6: [fd00::1]:8443, [::]:443, [::ffff:10.0.0.2]:993, [::ffff:0.0.0.0]:995 LISTEN.
 	tcp6 := filepath.Join(f.root, "net/tcp6")
 	tcp6Body := "  sl  local_address remote_address st\n" +
 		ln("000000FD000000000000000001000000:20FB", "0A") + "\n" +
 		ln("00000000000000000000000000000000:01BB", "0A") + "\n" +
-		ln("0000000000000000FFFF00000200000A:03E1", "0A") + "\n"
+		ln("0000000000000000FFFF00000200000A:03E1", "0A") + "\n" +
+		ln("0000000000000000FFFF000000000000:03E3", "0A") + "\n"
 	write(t, tcp6, tcp6Body)
 	check("IPv6 same address", "fd00::1", 8443, true)
 	check("IPv6 same port, other local address", "fd00::2", 8443, false)
 	check("IPv6 wildcard ::", "fd00::2", 443, true)
-	check("dual-stack :: takes IPv4", "10.0.0.2", 443, true)
+	// ★ :: 리스너만으로는 IPv4 연결을 받는다고 하지 않는다 — IPV6_V6ONLY인지 /proc에서 알 수 없다.
+	check(":: alone does not confirm IPv4", "10.0.0.2", 443, false)
 	check("v4-mapped listener", "10.0.0.2", 993, true)
 	check("v4-mapped listener, other address", "10.0.0.1", 993, false)
+	check("v4-mapped wildcard ::ffff:0.0.0.0", "10.0.0.1", 995, true)
 	check("0.0.0.0 does not take IPv6", "fd00::2", 22, false)
 
 	// ★ 해당 주소 계열의 표를 읽다 실패하면 오류다. tcp만 읽고 「리스너 없음」으로 끝내지 않는다.

@@ -447,15 +447,15 @@ func (a *Attributor) rescan() (map[uint64][]int, bool) {
 // 대조하는 리스너:
 //
 //	로컬 주소   맞는 리스너
-//	IPv4       같은 주소(tcp, 또는 tcp6의 ::ffff: 매핑) · 0.0.0.0 · ::(이중 스택)
+//	IPv4       같은 주소(tcp, 또는 tcp6의 ::ffff: 매핑) · 0.0.0.0(tcp, 또는 tcp6의 ::ffff:0.0.0.0)
 //	IPv6       같은 주소 · ::
 //
 // 포트만 같고 주소가 다른 리스너(IP-A:2222)는 IP-B:2222의 연결을 받지 않는다 — 맞지 않는다.
-// :: 리스너가 IPV6_V6ONLY인지는 /proc에 없다. 그래서 IPv4 연결에도 맞는다고 본다(그 포트를 쥐고 있어 커널이
-// 출발 포트로 주지 않는다).
+// **:: 리스너는 IPv4 연결에 맞추지 않는다.** 그 소켓이 IPV6_V6ONLY=1이면 IPv4를 받지 않는데, /proc/net/tcp6의
+// 주소로는 그 설정을 알 수 없다. IPv4 연결에 :: 리스너만 있으면 「없음」이고, 역할은 SYN을 못 봤으면 UNSPECIFIED다.
 //
 // 필요한 표를 읽지 못하면 오류다 — 그때 역할은 「확인하지 못함」이다. IPv6 로컬에는 tcp6가, IPv4 로컬에는 tcp와
-// tcp6가 다 필요하다(이중 스택 리스너가 tcp6에 있다). 다만 tcp6가 **없으면**(IPv6 스택이 꺼진 커널) IPv6
+// tcp6가 다 필요하다(IPv4 매핑 주소의 리스너가 tcp6에 있다). 다만 tcp6가 **없으면**(IPv6 스택이 꺼진 커널) IPv6
 // 리스너도 없으므로 IPv4 조회는 tcp만으로 끝난다. 권한 등으로 열리지 않거나 읽다 실패한 것은 없는 것과 다르다.
 func ListeningOn(procRoot, localIP string, port uint32) (bool, error) {
 	ip := net.ParseIP(localIP)
@@ -471,7 +471,7 @@ func ListeningOn(procRoot, localIP string, port uint32) (bool, error) {
 		fh, err := os.Open(filepath.Join(procRoot, name))
 		if err != nil {
 			if v4 && name == "net/tcp6" && errors.Is(err, fs.ErrNotExist) {
-				continue // IPv6 스택이 없다 — 이중 스택 리스너도 없다
+				continue // IPv6 스택이 없다 — IPv4 매핑 주소의 리스너도 없다
 			}
 			return false, fmt.Errorf("%s could not be read: %w", name, err)
 		}
@@ -503,10 +503,10 @@ func scanListeners(r io.Reader, ip net.IP, v4 bool, port uint32) (bool, error) {
 		switch {
 		case lip.Equal(ip): // net.IP.Equal은 a.b.c.d와 ::ffff:a.b.c.d를 같게 본다
 			return true, nil
-		case lip.Equal(net.IPv4zero) && v4:
+		case lip.Equal(net.IPv4zero) && v4: // tcp의 0.0.0.0, tcp6의 ::ffff:0.0.0.0
 			return true, nil
-		case lip.Equal(net.IPv6unspecified): // 0.0.0.0과는 같지 않다(To16이 ::ffff:0.0.0.0이다)
-			return true, nil // :: — IPv6, 그리고 이중 스택이면 IPv4
+		case lip.Equal(net.IPv6unspecified) && !v4: // ::는 IPv6만 — IPv4에는 V6ONLY를 확인할 수 없다
+			return true, nil
 		}
 	}
 	return false, sc.Err()
