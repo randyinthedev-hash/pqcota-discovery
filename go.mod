@@ -5,8 +5,8 @@ go 1.26.4
 toolchain go1.26.11
 
 require (
-	github.com/randyinthedev-hash/pqcota-common v0.17.0
-	github.com/randyinthedev-hash/pqcota-inventory v0.17.0
+	github.com/randyinthedev-hash/pqcota-common v0.18.0
+	github.com/randyinthedev-hash/pqcota-inventory v0.18.0
 )
 
 require (
