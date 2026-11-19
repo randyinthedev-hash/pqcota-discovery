@@ -149,25 +149,74 @@ func TestSameAppOnBothSocketsIsNotAmbiguous(t *testing.T) {
 // ListeningOn — 로컬 포트에 LISTEN(0A) 소켓이 있으면 true. 같은 포트의 수립된 연결(01)이나 다른 포트의 LISTEN은 아니다.
 // 두 파일 다 못 읽으면 오류(역할 「확인하지 못함」으로 이어진다).
 func TestListeningOn(t *testing.T) {
-	// 0.0.0.0:22 LISTEN, 10.0.0.2:22 ↔ 10.0.0.1:50000 ESTABLISHED, 127.0.0.1:2222 ESTABLISHED만.
-	f := newFakeProc(t,
-		"   0: 00000000:0016 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 1001 1 0000000000000000 100 0 0 10 0",
-		"   1: 0200000A:0016 0100000A:C350 01 00000000:00000000 00:00000000 00000000     0        0 1002 1 0000000000000000 20 0 0 10 0",
-		"   2: 0100007F:08AE 0100007F:9C40 01 00000000:00000000 00:00000000 00000000  1000        0 1003 1 0000000000000000 20 0 0 10 0",
-	)
-	for port, want := range map[uint32]bool{22: true, 2222: false, 50000: false} {
-		got, err := procs.ListeningOn(f.root, port)
-		if err != nil || got != want {
-			t.Errorf("port %d: %v %v, want %v", port, got, err, want)
+	ln := func(local, st string) string {
+		return "   0: " + local + " 00000000:0000 " + st + " 00000000:00000000 00:00000000 00000000     0        0 1001 1 0000000000000000 100 0 0 10 0"
+	}
+	// tcp: 0.0.0.0:22 LISTEN, 10.0.0.1:2222 LISTEN(IP-A만), 10.0.0.2:22 ESTABLISHED. tcp6는 아직 없다(IPv6 스택 없음).
+	f := newFakeProc(t, ln("00000000:0016", "0A"), ln("0100000A:08AE", "0A"), ln("0200000A:0016", "01"))
+	check := func(name, ip string, port uint32, want bool) {
+		t.Helper()
+		if got, err := procs.ListeningOn(f.root, ip, port); err != nil || got != want {
+			t.Errorf("%s (%s:%d): %v %v, want %v", name, ip, port, got, err, want)
 		}
 	}
-	// tcp6의 LISTEN(:::443)도 본다.
-	write(t, filepath.Join(f.root, "net/tcp6"), "  sl  local_address remote_address st\n"+
-		"   0: 00000000000000000000000000000000:01BB 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 2001 1 0000000000000000 100 0 0 10 0\n")
-	if got, err := procs.ListeningOn(f.root, 443); err != nil || !got {
-		t.Errorf("tcp6 listen: %v %v", got, err)
+	check("wildcard 0.0.0.0", "10.0.0.2", 22, true)
+	check("same address", "10.0.0.1", 2222, true)
+	// ★ 같은 포트·다른 로컬 주소: IP-A:2222의 리스너는 IP-B:2222를 출발점으로 쓴 연결을 받지 않는다.
+	check("same port, other local address", "10.0.0.2", 2222, false)
+	check("established is not listening", "10.0.0.2", 50000, false)
+	// IPv6 로컬인데 tcp6가 없다 — 판정에 필요한 표가 없으니 오류다(「리스너 없음」이 아니다).
+	if _, err := procs.ListeningOn(f.root, "fd00::2", 22); err == nil {
+		t.Error("IPv6 local without net/tcp6 should be an error")
 	}
-	if _, err := procs.ListeningOn(filepath.Join(t.TempDir(), "none"), 22); err == nil {
+
+	// tcp6: [fd00::1]:8443, [::]:443, [::ffff:10.0.0.2]:993 LISTEN.
+	tcp6 := filepath.Join(f.root, "net/tcp6")
+	tcp6Body := "  sl  local_address remote_address st\n" +
+		ln("000000FD000000000000000001000000:20FB", "0A") + "\n" +
+		ln("00000000000000000000000000000000:01BB", "0A") + "\n" +
+		ln("0000000000000000FFFF00000200000A:03E1", "0A") + "\n"
+	write(t, tcp6, tcp6Body)
+	check("IPv6 same address", "fd00::1", 8443, true)
+	check("IPv6 same port, other local address", "fd00::2", 8443, false)
+	check("IPv6 wildcard ::", "fd00::2", 443, true)
+	check("dual-stack :: takes IPv4", "10.0.0.2", 443, true)
+	check("v4-mapped listener", "10.0.0.2", 993, true)
+	check("v4-mapped listener, other address", "10.0.0.1", 993, false)
+	check("0.0.0.0 does not take IPv6", "fd00::2", 22, false)
+
+	// ★ 해당 주소 계열의 표를 읽다 실패하면 오류다. tcp만 읽고 「리스너 없음」으로 끝내지 않는다.
+	if err := os.Remove(tcp6); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(tcp6, 0o755); err != nil { // 열리지만 읽으면 실패한다
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		ip   string
+		port uint32
+	}{{"10.0.0.2", 2222}, {"fd00::2", 443}} {
+		if got, err := procs.ListeningOn(f.root, c.ip, c.port); err == nil {
+			t.Errorf("%s:%d with unreadable net/tcp6: %v, want an error", c.ip, c.port, got)
+		}
+	}
+	// IPv6 로컬에는 tcp가 필요 없다 — tcp를 못 읽어도 tcp6로 정한다. IPv4 로컬은 오류다.
+	if err := os.Remove(tcp6); err != nil {
+		t.Fatal(err)
+	}
+	write(t, tcp6, tcp6Body)
+	tcp := filepath.Join(f.root, "net/tcp")
+	if err := os.Remove(tcp); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(tcp, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	check("IPv6 does not need net/tcp", "fd00::2", 443, true)
+	if _, err := procs.ListeningOn(f.root, "10.0.0.2", 2222); err == nil {
+		t.Error("IPv4 local with unreadable net/tcp should be an error")
+	}
+	if _, err := procs.ListeningOn(filepath.Join(t.TempDir(), "none"), "10.0.0.2", 22); err == nil {
 		t.Error("no /proc should be an error, not 'not listening'")
 	}
 }

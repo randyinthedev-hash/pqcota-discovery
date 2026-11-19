@@ -7,6 +7,7 @@ package network
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -65,25 +66,51 @@ func TestEdgeForBothSides(t *testing.T) {
 	}
 }
 
-// SSH: LISTEN 조회로 역할을 정한다. 클라이언트가 낮은 포트(1022), 서버가 높은 포트(2222)를 써도 반대로 판정하지
-// 않는다. 조회가 실패하면 UNSPECIFIED이고, 포트 크기로 추정하지 않는다.
-func TestEdgeForSSHUsesListeningNotPortSize(t *testing.T) {
+// SSH: 연결을 연 SYN의 방향으로 역할을 정한다. 클라이언트가 낮은 포트(1022), 서버가 높은 포트(2222)를 써도
+// 반대로 판정하지 않는다. SYN을 못 봤으면 로컬 주소·포트의 LISTEN 조회로 SERVER만 정하고, 없거나 조회가
+// 실패하면 UNSPECIFIED다. 포트 크기로 추정하지 않는다.
+func TestEdgeForSSHUsesSYNNotPortSize(t *testing.T) {
 	kex := &Handshake{Protocol: "SSH"}
 	seg := &Segment{SrcIP: "10.0.1.10", DstIP: "10.0.1.20", SrcPort: 1022, DstPort: 2222}
-	cli := &LiveSource{Node: "web-01", SelfIPs: map[string]bool{"10.0.1.10": true},
-		Listening: func(p uint16) (bool, error) { return false, nil }}
+	syn := &Segment{SrcIP: "10.0.1.10", DstIP: "10.0.1.20", SrcPort: 1022, DstPort: 2222, Flags: 0x02}
+	synAck := &Segment{SrcIP: "10.0.1.20", DstIP: "10.0.1.10", SrcPort: 2222, DstPort: 1022, Flags: 0x12}
+	if !syn.OpensConnection() || synAck.OpensConnection() {
+		t.Fatal("only a SYN without ACK opens a connection")
+	}
+	notListening := func(string, uint16) (bool, error) { return false, nil }
+
+	cli := &LiveSource{Node: "web-01", SelfIPs: map[string]bool{"10.0.1.10": true}, Listening: notListening}
+	cli.noteOpen(syn)
 	if got, _ := cli.edgeFor(seg, kex); got.Role != client || got.DstAddr != "10.0.1.20:2222" || got.Port != 2222 {
-		t.Errorf("client on a low port: %+v", got)
+		t.Errorf("client on a low port, SYN sent: %+v", got)
 	}
-	srv := &LiveSource{Node: "web-02", SelfIPs: map[string]bool{"10.0.1.20": true},
-		Listening: func(p uint16) (bool, error) { return p == 2222, nil }}
+	srv := &LiveSource{Node: "web-02", SelfIPs: map[string]bool{"10.0.1.20": true}, Listening: notListening}
+	srv.noteOpen(syn)
 	if got, _ := srv.edgeFor(seg, kex); got.Role != server || got.DstAddr != "10.0.1.10" || got.Port != 2222 {
-		t.Errorf("server on a high port: %+v", got)
+		t.Errorf("server on a high port, SYN received (even with no listener now): %+v", got)
 	}
-	unk := &LiveSource{Node: "web-02", SelfIPs: map[string]bool{"10.0.1.20": true},
-		Listening: func(p uint16) (bool, error) { return false, errors.New("no /proc") }}
-	if got, _ := unk.edgeFor(seg, kex); got.Role != unspec || got.DstAddr != "10.0.1.10" || got.Port != 0 {
-		t.Errorf("lookup failed: %+v", got)
+
+	// SYN을 못 봤다: LISTEN은 로컬 주소와 포트로 조회한다.
+	var asked string
+	lst := &LiveSource{Node: "web-02", SelfIPs: map[string]bool{"10.0.1.20": true},
+		Listening: func(ip string, p uint16) (bool, error) { asked = fmt.Sprintf("%s:%d", ip, p); return true, nil }}
+	if got, _ := lst.edgeFor(seg, kex); got.Role != server || asked != "10.0.1.20:2222" {
+		t.Errorf("no SYN, listening: %+v (asked %q)", got, asked)
+	}
+	for name, l := range map[string]func(string, uint16) (bool, error){
+		"not listening": notListening,
+		"lookup failed": func(string, uint16) (bool, error) { return false, errors.New("no /proc") },
+	} {
+		unk := &LiveSource{Node: "web-01", SelfIPs: map[string]bool{"10.0.1.10": true}, Listening: l}
+		if got, _ := unk.edgeFor(seg, kex); got.Role != unspec || got.DstAddr != "10.0.1.20" || got.Port != 0 {
+			t.Errorf("no SYN, %s: %+v", name, got)
+		}
+	}
+	// 다른 연결(출발 포트가 다르다)의 SYN은 이 연결의 근거가 아니다.
+	other := &LiveSource{Node: "web-01", SelfIPs: map[string]bool{"10.0.1.10": true}, Listening: notListening}
+	other.noteOpen(&Segment{SrcIP: "10.0.1.10", DstIP: "10.0.1.20", SrcPort: 1023, DstPort: 2222, Flags: 0x02})
+	if got, _ := other.edgeFor(seg, kex); got.Role != unspec {
+		t.Errorf("a SYN of another connection decided the role: %+v", got)
 	}
 }
 

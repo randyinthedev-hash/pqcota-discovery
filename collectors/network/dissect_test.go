@@ -108,6 +108,22 @@ func TestDissect_skipsNonTCP(t *testing.T) {
 	}
 }
 
+// DissectTCP는 페이로드 없는 세그먼트도 플래그와 함께 돌려준다. SSH 역할은 연결을 연 SYN의 방향으로 정한다.
+func TestDissectTCP_flags(t *testing.T) {
+	for name, c := range map[string]struct {
+		flags byte
+		opens bool
+	}{"SYN": {0x02, true}, "SYN+ACK": {0x12, false}, "ACK": {0x10, false}, "RST": {0x04, false}} {
+		for fam, frame := range map[string][]byte{"IPv4": ethIPv4TCP(1022, 2222, nil), "IPv6": ethIPv6TCP(1022, 2222, nil)} {
+			frame[len(frame)-20+13] = c.flags
+			seg, ok := network.DissectTCP(frame)
+			if !ok || seg.Flags != c.flags || seg.OpensConnection() != c.opens || len(seg.Payload) != 0 {
+				t.Errorf("%s %s: ok=%v %+v", name, fam, ok, seg)
+			}
+		}
+	}
+}
+
 // 강등 경로(TD-NETWORK-13): 소스가 ErrCaptureUnavailable → Collect가 노드별 완전성 갭 결과를 스트림.
 type errSource struct{ err error }
 

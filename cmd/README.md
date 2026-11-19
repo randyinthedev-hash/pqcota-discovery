@@ -140,7 +140,7 @@ pqcota-netcap [--strict] <node-id> [iface] [window-seconds]
 | `SERVER` (this node accepted it) | the client's IP, without its port | the port this node accepted on | the process that accepted it |
 | `UNSPECIFIED` (role not confirmed) | the peer's IP, without a port | `0` | as above, from the socket |
 
-- The role comes from the handshake and its direction. For TLS, whoever sends the ClientHello is the client and whoever sends the ServerHello is the server, so either message is enough. For SSH both sides send the same message, so netcap checks whether the local port has a listening socket. If it cannot tell, the role stays `UNSPECIFIED`; it does not guess from which port number is lower.
+- The role comes from the handshake and its direction. For TLS, whoever sends the ClientHello is the client and whoever sends the ServerHello is the server, so either message is enough. For SSH both sides send the same message, so netcap looks at which side sent the SYN that opened the connection. If it did not see the SYN, it calls the local side the server only when a listening socket accepts that local address and port. A missing listener alone does not make it the client, because an accepted connection outlives a closed listener. If it cannot tell, the role stays `UNSPECIFIED`; it does not guess from which port number is lower.
 - The client's source port changes with every connection, so it is used only to find the socket and is not part of the record. A client that reconnects adds to the same record's `observed_count`.
 - When both nodes run netcap, the same connection is recorded once on each node. The records are not merged.
 

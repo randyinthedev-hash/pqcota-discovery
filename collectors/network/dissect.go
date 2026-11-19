@@ -14,12 +14,26 @@ import (
 type Segment struct {
 	SrcIP, DstIP     string
 	SrcPort, DstPort uint16
+	Flags            uint8 // TCP 플래그 바이트(FIN 0x01·SYN 0x02·RST 0x04·PSH 0x08·ACK 0x10)
 	Payload          []byte
 }
 
+// OpensConnection — 연결을 여는 SYN(ACK 없음)인가. 보낸 쪽이 연결을 연 쪽(클라이언트)이다.
+func (s *Segment) OpensConnection() bool { return s.Flags&0x02 != 0 && s.Flags&0x10 == 0 }
+
 // DissectTCPPayload — Ethernet II + IPv4/IPv6 + TCP 프레임에서 TCP 세그먼트를 뽑는다.
 // 핸드셰이크 프레임 처리용. 비TCP·VLAN(단일 태그만)·조각화·절단은 정직히 (nil,false)로 스킵한다.
+// 페이로드가 없는 세그먼트(SYN·ACK 등)도 스킵한다 — 그것까지 받으려면 [DissectTCP].
 func DissectTCPPayload(frame []byte) (*Segment, bool) {
+	seg, ok := DissectTCP(frame)
+	if !ok || len(seg.Payload) == 0 {
+		return nil, false
+	}
+	return seg, true
+}
+
+// DissectTCP — [DissectTCPPayload]와 같되 페이로드가 없는 세그먼트도 돌려준다(SYN 방향으로 연결을 연 쪽을 알 때).
+func DissectTCP(frame []byte) (*Segment, bool) {
 	if len(frame) < 14 {
 		return nil, false
 	}
@@ -56,10 +70,8 @@ func DissectTCPPayload(frame []byte) (*Segment, bool) {
 		DstIP:   dstIP,
 		SrcPort: binary.BigEndian.Uint16(tcp[0:2]),
 		DstPort: binary.BigEndian.Uint16(tcp[2:4]),
+		Flags:   tcp[13],
 		Payload: tcp[dataOff:],
-	}
-	if len(seg.Payload) == 0 {
-		return nil, false // SYN/ACK 등 페이로드 없는 세그먼트
 	}
 	return seg, true
 }

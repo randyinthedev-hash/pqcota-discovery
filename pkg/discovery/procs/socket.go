@@ -5,7 +5,11 @@ package procs
 
 import (
 	"bufio"
+	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"net"
 	"os"
 	"path/filepath"
@@ -437,38 +441,94 @@ func (a *Attributor) rescan() (map[uint64][]int, bool) {
 	return a.owners, a.denied
 }
 
-// ListeningOn — 로컬 포트에 LISTEN 소켓(`/proc/net/tcp`·`tcp6`의 상태 0A)이 있나. 주소는 보지 않는다(0.0.0.0·::·특정
-// 주소 어느 것이든 그 포트를 받으면 서버다). SSH 연결에서 로컬의 역할을 정하는 데 쓴다(network.LocalRole).
-// 두 파일을 모두 읽지 못하면 오류다 — 그때 역할은 「확인하지 못함」이고, 포트 크기로 추정하지 않는다.
-func ListeningOn(procRoot string, port uint32) (bool, error) {
-	want := fmt.Sprintf(":%04X", port)
-	readAny := false
-	for _, name := range []string{"net/tcp", "net/tcp6"} {
+// ListeningOn — 로컬 끝점 localIP:port로 들어온 연결을 받을 LISTEN 소켓(`/proc/net/tcp`·`tcp6`의 상태 0A)이 있나.
+// SSH 연결에서 로컬의 역할을 정하는 데 쓴다(network.LocalRole, SYN을 못 봤을 때).
+//
+// 대조하는 리스너:
+//
+//	로컬 주소   맞는 리스너
+//	IPv4       같은 주소(tcp, 또는 tcp6의 ::ffff: 매핑) · 0.0.0.0 · ::(이중 스택)
+//	IPv6       같은 주소 · ::
+//
+// 포트만 같고 주소가 다른 리스너(IP-A:2222)는 IP-B:2222의 연결을 받지 않는다 — 맞지 않는다.
+// :: 리스너가 IPV6_V6ONLY인지는 /proc에 없다. 그래서 IPv4 연결에도 맞는다고 본다(그 포트를 쥐고 있어 커널이
+// 출발 포트로 주지 않는다).
+//
+// 필요한 표를 읽지 못하면 오류다 — 그때 역할은 「확인하지 못함」이다. IPv6 로컬에는 tcp6가, IPv4 로컬에는 tcp와
+// tcp6가 다 필요하다(이중 스택 리스너가 tcp6에 있다). 다만 tcp6가 **없으면**(IPv6 스택이 꺼진 커널) IPv6
+// 리스너도 없으므로 IPv4 조회는 tcp만으로 끝난다. 권한 등으로 열리지 않거나 읽다 실패한 것은 없는 것과 다르다.
+func ListeningOn(procRoot, localIP string, port uint32) (bool, error) {
+	ip := net.ParseIP(localIP)
+	if ip == nil {
+		return false, fmt.Errorf("not an IP: %q", localIP)
+	}
+	v4 := ip.To4() != nil
+	tables := []string{"net/tcp6"}
+	if v4 {
+		tables = []string{"net/tcp", "net/tcp6"}
+	}
+	for _, name := range tables {
 		fh, err := os.Open(filepath.Join(procRoot, name))
 		if err != nil {
-			continue
-		}
-		readAny = true
-		sc := bufio.NewScanner(fh)
-		sc.Scan() // 헤더
-		for sc.Scan() {
-			f := strings.Fields(sc.Text())
-			if len(f) < 4 {
-				continue
+			if v4 && name == "net/tcp6" && errors.Is(err, fs.ErrNotExist) {
+				continue // IPv6 스택이 없다 — 이중 스택 리스너도 없다
 			}
-			if f[3] == "0A" && strings.HasSuffix(strings.ToUpper(f[1]), want) {
-				fh.Close()
-				return true, nil
-			}
+			return false, fmt.Errorf("%s could not be read: %w", name, err)
 		}
-		err = sc.Err()
+		found, err := scanListeners(fh, ip, v4, port)
 		fh.Close()
 		if err != nil {
-			return false, err
+			return false, fmt.Errorf("%s could not be read: %w", name, err)
+		}
+		if found {
+			return true, nil
 		}
 	}
-	if !readAny {
-		return false, fmt.Errorf("neither %s/net/tcp nor net/tcp6 could be read", procRoot)
-	}
 	return false, nil
+}
+
+// scanListeners — 한 소켓 표에서 ip:port를 받는 LISTEN 소켓을 찾는다.
+func scanListeners(r io.Reader, ip net.IP, v4 bool, port uint32) (bool, error) {
+	sc := bufio.NewScanner(r)
+	sc.Scan() // 헤더
+	for sc.Scan() {
+		f := strings.Fields(sc.Text())
+		if len(f) < 4 || f[3] != "0A" {
+			continue
+		}
+		lip, lport, ok := parseProcAddr(f[1])
+		if !ok || lport != port {
+			continue
+		}
+		switch {
+		case lip.Equal(ip): // net.IP.Equal은 a.b.c.d와 ::ffff:a.b.c.d를 같게 본다
+			return true, nil
+		case lip.Equal(net.IPv4zero) && v4:
+			return true, nil
+		case lip.Equal(net.IPv6unspecified): // 0.0.0.0과는 같지 않다(To16이 ::ffff:0.0.0.0이다)
+			return true, nil // :: — IPv6, 그리고 이중 스택이면 IPv4
+		}
+	}
+	return false, sc.Err()
+}
+
+// parseProcAddr — /proc/net/tcp 표기("0100007F:0016")를 주소와 포트로. [hexBytes]의 역.
+func parseProcAddr(s string) (net.IP, uint32, bool) {
+	h, p, ok := strings.Cut(s, ":")
+	if !ok || (len(h) != 8 && len(h) != 32) {
+		return nil, 0, false
+	}
+	raw, err := hex.DecodeString(h)
+	if err != nil {
+		return nil, 0, false
+	}
+	ip := make(net.IP, len(raw))
+	for i := 0; i < len(raw); i += 4 {
+		ip[i], ip[i+1], ip[i+2], ip[i+3] = raw[i+3], raw[i+2], raw[i+1], raw[i]
+	}
+	port, err := strconv.ParseUint(p, 16, 16)
+	if err != nil {
+		return nil, 0, false
+	}
+	return ip, uint32(port), true
 }

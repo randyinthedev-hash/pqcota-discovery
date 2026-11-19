@@ -8,6 +8,7 @@ package network
 import (
 	"fmt"
 	"net"
+	"strconv"
 	"time"
 
 	discoveryv1 "github.com/randyinthedev-hash/pqcota-common/gen/pqcota/discovery/v1"
@@ -21,8 +22,9 @@ type LiveSource struct {
 	Iface   string          // 캡처 인터페이스(예 "eth0"). ""=모든 인터페이스
 	Node    string          // 캡처 호스트 스코프 노드 ID(앵커)
 	SelfIPs map[string]bool // 자기 IP — 패킷 방향(로컬이 보냈나)·자기참조(§2.6)
-	// Listening — 로컬 포트에 LISTEN 소켓이 있나(SSH 역할 판정). nil이거나 오류면 SSH 역할은 UNSPECIFIED다.
-	Listening  func(port uint16) (bool, error)
+	// Listening — 로컬 주소·포트를 받는 LISTEN 소켓이 있나(SSH 역할 판정, SYN을 못 봤을 때만). 없거나, nil이거나,
+	// 오류면 SSH 역할은 UNSPECIFIED다.
+	Listening  func(localIP string, port uint16) (bool, error)
 	Window     time.Duration // 관측 구간(0이면 3초)
 	MaxPackets int           // 상한(0=구간으로만 종료)
 
@@ -30,6 +32,8 @@ type LiveSource struct {
 	// 보고하면 **결함이 갭처럼 보인다**(§2.6) — 호출자가 완전성 노트에 반영하라고 남긴다.
 	Truncated bool
 	TruncErr  error
+
+	opened map[string]bool // 관측 구간에서 본 연결 여는 SYN: 「로컬|원격」 끝점 → 로컬이 보냈나
 }
 
 func htons(x uint16) uint16 { return (x << 8) | (x >> 8) }
@@ -61,6 +65,7 @@ func (s *LiveSource) Observe(_ []string, _ map[string]string) ([]Observation, er
 	buf := make([]byte, 65536)
 	var out []Observation
 	pend := newSSHPending()
+	s.opened = map[string]bool{}
 	for time.Now().Before(end) {
 		n, _, err := unix.Recvfrom(fd, buf, 0)
 		if err != nil {
@@ -76,8 +81,14 @@ func (s *LiveSource) Observe(_ []string, _ map[string]string) ([]Observation, er
 			s.Truncated, s.TruncErr = true, err
 			break
 		}
-		seg, ok := DissectTCPPayload(buf[:n])
+		seg, ok := DissectTCP(buf[:n])
 		if !ok {
+			continue
+		}
+		if seg.OpensConnection() {
+			s.noteOpen(seg)
+		}
+		if len(seg.Payload) == 0 {
 			continue
 		}
 		hs, ok := ParseHandshakePayload(seg.Payload)
@@ -183,8 +194,34 @@ func (s *LiveSource) edgeFor(seg *Segment, hs *Handshake) (ConnTuple, bool) {
 	}
 	var listening func() (bool, error)
 	if s.Listening != nil {
-		listening = func() (bool, error) { return s.Listening(localPort) }
+		listening = func() (bool, error) { return s.Listening(localIP, localPort) }
 	}
-	role := LocalRole(hs, srcSelf, listening)
+	opener := OpenerUnseen
+	if byLocal, seen := s.opened[endpoints(localIP, localPort, remoteIP, remotePort)]; seen {
+		opener = OpenerRemote
+		if byLocal {
+			opener = OpenerLocal
+		}
+	}
+	role := LocalRole(hs, srcSelf, opener, listening)
 	return TupleFor(s.Node, role, localIP, localPort, remoteIP, remotePort), true
+}
+
+// noteOpen — 연결을 여는 SYN을 적어 둔다. 한쪽만 로컬인 연결만.
+func (s *LiveSource) noteOpen(seg *Segment) {
+	if s.opened == nil {
+		s.opened = map[string]bool{}
+	}
+	srcSelf, dstSelf := s.SelfIPs[seg.SrcIP], s.SelfIPs[seg.DstIP]
+	switch {
+	case srcSelf && !dstSelf:
+		s.opened[endpoints(seg.SrcIP, seg.SrcPort, seg.DstIP, seg.DstPort)] = true
+	case dstSelf && !srcSelf:
+		s.opened[endpoints(seg.DstIP, seg.DstPort, seg.SrcIP, seg.SrcPort)] = false
+	}
+}
+
+// endpoints — 연결의 로컬·원격 끝점 키.
+func endpoints(localIP string, localPort uint16, remoteIP string, remotePort uint16) string {
+	return net.JoinHostPort(localIP, strconv.Itoa(int(localPort))) + "|" + net.JoinHostPort(remoteIP, strconv.Itoa(int(remotePort)))
 }

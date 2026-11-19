@@ -31,26 +31,37 @@ func TestLocalRoleTLS(t *testing.T) {
 		"server node, ClientHello only (received)": {ch, false, server},
 		"server node, ServerHello only (sent)":     {sh, true, server},
 	} {
-		if got := LocalRole(c.hs, c.sentByLocal, nil); got != c.want {
+		if got := LocalRole(c.hs, c.sentByLocal, OpenerUnseen, nil); got != c.want {
 			t.Errorf("%s: %v, want %v", name, got, c.want)
 		}
 	}
 }
 
-// SSH는 LISTEN 소켓으로 정한다. 읽지 못하면 UNSPECIFIED이고 포트 크기로 추정하지 않는다.
+// SSH: SYN 방향이 먼저다. SYN을 못 봤으면 LISTEN 소켓이 있을 때만 SERVER이고, 없거나 조회에 실패하면
+// UNSPECIFIED다 — 조회 시점에 리스너가 없다는 것은 이미 받은 연결이 클라이언트라는 근거가 아니다. 포트 크기로
+// 추정하지 않는다.
 func TestLocalRoleSSH(t *testing.T) {
 	kex := &Handshake{Protocol: "SSH"}
+	yes := func() (bool, error) { return true, nil }
+	no := func() (bool, error) { return false, nil }
+	fail := func() (bool, error) { return false, errors.New("no /proc") }
 	for name, c := range map[string]struct {
+		opener    Opener
 		listening func() (bool, error)
 		want      discoveryv1.EdgeRole
 	}{
-		"listening":     {func() (bool, error) { return true, nil }, server},
-		"not listening": {func() (bool, error) { return false, nil }, client},
-		"lookup failed": {func() (bool, error) { return false, errors.New("no /proc") }, unspec},
-		"no lookup":     {nil, unspec},
+		"local sent SYN":                 {OpenerLocal, nil, client},
+		"remote sent SYN":                {OpenerRemote, nil, server},
+		"SYN wins over a listener":       {OpenerLocal, yes, client},
+		"no SYN, listening":              {OpenerUnseen, yes, server},
+		"no SYN, not listening":          {OpenerUnseen, no, unspec},
+		"no SYN, lookup failed":          {OpenerUnseen, fail, unspec},
+		"no SYN, no lookup":              {OpenerUnseen, nil, unspec},
+		"remote sent SYN, lookup failed": {OpenerRemote, fail, server},
+		"local sent SYN, not listening":  {OpenerLocal, no, client},
 	} {
 		for _, sent := range []bool{true, false} {
-			if got := LocalRole(kex, sent, c.listening); got != c.want {
+			if got := LocalRole(kex, sent, c.opener, c.listening); got != c.want {
 				t.Errorf("%s (sent=%v): %v, want %v", name, sent, got, c.want)
 			}
 		}
